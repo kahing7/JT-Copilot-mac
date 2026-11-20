@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/JT.Copilot.Application/JT.Copilot.Application.csproj" />
+    <Project Path="src/JT.Copilot.Contracts/JT.Copilot.Contracts.csproj" />
+    <Project Path="src/JT.Copilot.Desktop/JT.Copilot.Desktop.csproj" />
+    <Project Path="src/JT.Copilot.Domain/JT.Copilot.Domain.csproj" />
+    <Project Path="src/JT.Copilot.Infrastructure/JT.Copilot.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/JT.Copilot.IntegrationTests/JT.Copilot.IntegrationTests.csproj" />
+    <Project Path="tests/JT.Copilot.UnitTests/JT.Copilot.UnitTests.csproj" />
+  </Folder>
+</Solution>
