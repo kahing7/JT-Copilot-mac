@@ -1,50 +1,54 @@
 # JT Copilot
 
-JT Copilot is a Windows desktop writing assistant. It listens to continuous
-speech, inserts stable transcript segments at the active cursor, and updates a
-separate non-activating panel with a live framework and next-sentence guidance.
-When the session ends, it consolidates the full transcript, corrects errors, and
-replaces the text written during that session.
+JT Copilot is a Windows desktop writing assistant. It streams speech into the
+current editor, keeps the text visible while the user is still speaking, and
+maintains a separate non-activating panel with a framework and next-sentence
+guidance. When the session ends, Zhipu consolidates the raw recognition segments
+and replaces the session text with a corrected version.
 
 ## Current Status
 
-The core voice-writing workflow is implemented and usable:
+The core workflow is implemented:
 
-`Ctrl + Shift + J + T` starts a session, speech is segmented in real time, and
-`Esc` finishes the session and triggers full-text optimization.
+1. Press `Ctrl + Shift + J + T` to start.
+2. Local Vosk recognition emits character/word-level partial hypotheses.
+3. Partial text is inserted immediately and revised with minimal backspace diffs.
+4. The side panel updates framework, next-sentence guidance, directions, and
+   missing points.
+5. `Esc` stops capture.
+6. Zhipu `GLM-ASR-2512` reconciles stable audio segments.
+7. Zhipu `GLM-4.6` consolidates, deduplicates, and corrects the full session text.
+8. The corrected text replaces the session transcript.
 
 Implemented:
 
 - .NET 10 WPF modular application using MVVM and dependency injection.
 - Configurable global shortcut, defaulting to `Ctrl + Shift + J + T`.
-- 16 kHz mono microphone capture and local VAD-based segmentation.
-- Zhipu `GLM-ASR-2512` transcription for each stable audio segment.
-- Incremental insertion of stable text into the original focused editor.
-- Parallel Zhipu `GLM-4.5-Air` guidance with framework, next sentence, directions,
-  and missing points.
-- Non-activating side panel for live guidance.
-- Final `GLM-4.6` consolidation and correction of all raw ASR segments.
-- UI Automation range tracking and one-step clipboard-based replacement.
-- Safe fallback when focus or text range cannot be verified.
-- DPAPI-protected local API key storage.
+- Local Vosk Chinese streaming ASR with automatic first-use model download.
+- 16 kHz mono microphone capture and local VAD segmentation.
+- Unicode live typing with minimal backspace corrections.
+- Zhipu ASR segment reconciliation and final full-text optimization.
+- Acrylic `72 x 72` floating orb with adjustable opacity.
+- Acrylic guidance panel with adjustable opacity.
+- Dark context menu for Settings, guidance, Topmost, and Exit.
+- UI Automation range replacement with keyboard fallback.
+- DPAPI-protected Zhipu API key storage.
 
 Current limitations:
 
-- Recognition is segment-based near-real-time, not word-by-word transcription.
+- Partial text is input-method-like but may revise earlier words; it is not a
+  guarantee of one fixed codepoint per time interval.
 - Notepad insertion and final replacement are verified end to end.
-- Feishu is the primary target but still requires a live document compatibility
-  test; unsupported editors fall back to showing the optimized text for manual
-  copy.
-- Task history uses no SQLite database yet.
-- Light theme, startup registration, installer signing, and auto-update are not
-  included.
+- Feishu still requires a disposable live-document compatibility test.
+- Vosk accuracy is lower than Zhipu; the final Zhipu pass performs correction.
+- Task history still does not use SQLite.
 
 ## Requirements
 
 - Windows 11 x64
 - .NET SDK 10.0.402 or compatible .NET 10 SDK
 - A microphone visible to Windows
-- A valid Zhipu API key with ASR and GLM access
+- A Zhipu API key with ASR and GLM access
 
 ## Build And Test
 
@@ -60,14 +64,10 @@ dotnet test JT.Copilot.slnx
 dotnet run --project src/JT.Copilot.Desktop/JT.Copilot.Desktop.csproj
 ```
 
-Usage:
+Focus the target editor, place the cursor, press `Ctrl + Shift + J + T`, and
+speak. Press `Esc` to finish.
 
-1. Focus the target editor and place the cursor.
-2. Press `Ctrl + Shift + J + T` once to start.
-3. Stable speech segments are inserted while the side panel updates.
-4. Press `Esc` to finish and optimize the full session text.
-
-The API key can be entered in Settings and is encrypted with Windows DPAPI.
+Right-click the floating orb for Settings, guidance visibility, Topmost, and Exit.
 
 ## Local Data
 
@@ -75,12 +75,14 @@ The API key can be entered in Settings and is encrypted with Windows DPAPI.
 %LOCALAPPDATA%\JT Copilot\
 ├── settings.json
 ├── recordings\
-└── secrets\
-    └── zhipu-api-key.bin
+├── secrets\
+│   └── zhipu-api-key.bin
+└── models\
+    └── vosk-model-small-cn-0.22\
 ```
 
-The API key file is DPAPI-protected for the current Windows user. Keys must never
-be committed to the repository or written to logs.
+The Zhipu API key is DPAPI-protected for the current Windows user. Keys must not
+be committed or logged.
 
 ## Publish
 
@@ -91,7 +93,7 @@ dotnet publish src/JT.Copilot.Desktop/JT.Copilot.Desktop.csproj `
   --self-contained true `
   -p:PublishSingleFile=true `
   -p:IncludeNativeLibrariesForSelfExtract=true `
-  -o artifacts/publish/v0.2
+  -o artifacts/publish/v0.3
 ```
 
 ## Documentation
@@ -102,3 +104,4 @@ dotnet publish src/JT.Copilot.Desktop/JT.Copilot.Desktop.csproj `
 - [Compatibility matrix](docs/compatibility-matrix.md)
 - [Phase 1 validation](docs/phase1-validation.md)
 - [Phase 2 validation](docs/phase2-validation.md)
+- [Phase 3 validation](docs/phase3-validation.md)

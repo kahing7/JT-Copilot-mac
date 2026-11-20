@@ -15,6 +15,10 @@ public sealed record AppSettings
 
     public bool IsTopmost { get; init; } = true;
 
+    public double OrbOpacityPercent { get; init; } = 78;
+
+    public double GuidanceOpacityPercent { get; init; } = 68;
+
     public double? WindowLeft { get; init; }
 
     public double? WindowTop { get; init; }
@@ -38,7 +42,9 @@ public sealed record AppSettings
         {
             SchemaVersion = CurrentSchemaVersion,
             PreferredMicrophoneDeviceId = PreferredMicrophoneDeviceId?.Trim() ?? string.Empty,
-            Hotkey = gesture.ToSettingString()
+            Hotkey = gesture.ToSettingString(),
+            OrbOpacityPercent = Math.Clamp(OrbOpacityPercent, 35, 100),
+            GuidanceOpacityPercent = Math.Clamp(GuidanceOpacityPercent, 40, 100)
         };
     }
 }

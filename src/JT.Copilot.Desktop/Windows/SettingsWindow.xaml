@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="JT Copilot 设置"
         Width="440"
-        Height="458"
+        Height="620"
         WindowStyle="None"
         ResizeMode="NoResize"
         AllowsTransparency="True"
@@ -194,6 +194,54 @@
                                       Style="{StaticResource SwiftSwitchStyle}"
                                       IsChecked="{Binding IsTopmost, Mode=TwoWay}"
                                       AutomationProperties.Name="窗口置顶" />
+                    </Grid>
+
+                    <Rectangle Height="1"
+                               Margin="0,18,0,16"
+                               Fill="{StaticResource BorderBrush}" />
+
+                    <TextBlock Style="{StaticResource SectionLabelStyle}" Text="悬浮球透明度" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="46" />
+                        </Grid.ColumnDefinitions>
+                        <Slider Minimum="35"
+                                Maximum="100"
+                                TickFrequency="5"
+                                IsSnapToTickEnabled="True"
+                                Value="{Binding OrbOpacityPercent, Mode=TwoWay}"
+                                Foreground="{StaticResource AccentBrush}"
+                                AutomationProperties.Name="悬浮球透明度" />
+                        <TextBlock Grid.Column="1"
+                                   HorizontalAlignment="Right"
+                                   VerticalAlignment="Center"
+                                   FontSize="12"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Text="{Binding OrbOpacityPercent, StringFormat={}{0:F0}%}" />
+                    </Grid>
+
+                    <TextBlock Margin="0,16,0,6"
+                               Style="{StaticResource SectionLabelStyle}"
+                               Text="引导面板透明度" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="46" />
+                        </Grid.ColumnDefinitions>
+                        <Slider Minimum="40"
+                                Maximum="100"
+                                TickFrequency="5"
+                                IsSnapToTickEnabled="True"
+                                Value="{Binding GuidanceOpacityPercent, Mode=TwoWay}"
+                                Foreground="{StaticResource AccentBrush}"
+                                AutomationProperties.Name="引导面板透明度" />
+                        <TextBlock Grid.Column="1"
+                                   HorizontalAlignment="Right"
+                                   VerticalAlignment="Center"
+                                   FontSize="12"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Text="{Binding GuidanceOpacityPercent, StringFormat={}{0:F0}%}" />
                     </Grid>
 
                     <Rectangle Height="1"

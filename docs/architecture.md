@@ -106,3 +106,33 @@ for copy or manual replacement.
 - Some editors expose neither reliable UIA TextPattern ranges nor stable focus.
 - Segment boundaries may still introduce errors on highly technical vocabulary.
 - The final replacement depends on the session text remaining unchanged.
+
+## V0.3: Local Streaming Layer
+
+`VoskStreamingSpeechRecognitionProvider` loads the Chinese Vosk model locally and
+receives PCM continuously. It emits partial and final utterance hypotheses.
+
+`WindowsTextInsertionService.UpdateLiveDraftAsync` computes the minimal common
+prefix and applies only the required backspaces and Unicode characters. This
+provides immediate input-method-like updates while avoiding a full document
+rewrite on each partial.
+
+Zhipu remains on the slower, higher-quality path:
+
+- segment ASR for reconciliation;
+- full-session consolidation with `GLM-4.6`;
+- UIA range replacement or keyboard fallback.
+
+The guidance panel uses a separate ViewModel-to-window lifecycle. Closing the panel
+sets `IsGuidanceVisible` back to false so a subsequent session can create it again.
+
+## V0.3: Acrylic Windows
+
+The main window is a fixed `72 x 72` circular window. The guidance panel is a
+rounded rectangle. Both use:
+
+- `WS_EX_NOACTIVATE`;
+- Windows Acrylic blur composition when available;
+- a translucent graphite fallback;
+- separate persisted opacity values;
+- PerMonitorV2 DPI awareness.

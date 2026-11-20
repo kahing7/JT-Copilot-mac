@@ -1,8 +1,10 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Threading;
 using JT.Copilot.Desktop.ViewModels;
 using JT.Copilot.Desktop.Windows;
@@ -59,6 +61,7 @@ public partial class MainWindow : Window
             RestorePlacement();
             _isInitialized = true;
             Opacity = 1;
+            ApplyAcrylicAppearance();
         }
         catch (Exception exception)
         {
@@ -66,6 +69,7 @@ public partial class MainWindow : Window
             RestoreFallbackPlacement();
             _isInitialized = true;
             Opacity = 1;
+            ApplyAcrylicAppearance();
         }
     }
 
@@ -79,6 +83,7 @@ public partial class MainWindow : Window
             new nint(extendedStyle | WsExToolWindow | WsExNoActivate));
 
         HwndSource.FromHwnd(windowHandle)?.AddHook(WindowMessageHook);
+        ApplyAcrylicAppearance();
     }
 
     private void MainWindow_OnClosing(object? sender, CancelEventArgs e)
@@ -105,9 +110,10 @@ public partial class MainWindow : Window
         }
     }
 
-    private void Header_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    private void Orb_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.LeftButton == MouseButtonState.Pressed)
+        if (e.LeftButton == MouseButtonState.Pressed
+            && !IsButtonSource(e.OriginalSource as DependencyObject))
         {
             DragMove();
         }
@@ -126,16 +132,38 @@ public partial class MainWindow : Window
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(MainWindowViewModel.IsExpanded))
+        if (e.PropertyName == nameof(MainWindowViewModel.OrbOpacityPercent))
         {
-            Width = _viewModel.WindowWidth;
-            Height = _viewModel.WindowHeight;
+            ApplyAcrylicAppearance();
         }
 
         if (e.PropertyName == nameof(MainWindowViewModel.IsGuidanceVisible))
         {
             UpdateGuidanceWindowVisibility();
         }
+    }
+
+    private void ApplyAcrylicAppearance()
+    {
+        AcrylicWindowHelper.Apply(
+            this,
+            _viewModel.OrbOpacityPercent,
+            AcrylicShape.Circle);
+    }
+
+    private static bool IsButtonSource(DependencyObject? source)
+    {
+        while (source is not null)
+        {
+            if (source is ButtonBase)
+            {
+                return true;
+            }
+
+            source = VisualTreeHelper.GetParent(source);
+        }
+
+        return false;
     }
 
     private void UpdateGuidanceWindowVisibility()
@@ -149,7 +177,11 @@ public partial class MainWindow : Window
 
             _guidanceWindow = _serviceProvider.GetRequiredService<GuidanceWindow>();
             _guidanceWindow.DataContext = _viewModel;
-            _guidanceWindow.Closed += (_, _) => _guidanceWindow = null;
+            _guidanceWindow.Closed += (_, _) =>
+            {
+                _guidanceWindow = null;
+                _viewModel.IsGuidanceVisible = false;
+            };
             _guidanceWindow.Show();
             PositionGuidanceWindow();
             return;

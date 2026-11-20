@@ -32,6 +32,8 @@ speech sample:
 - `Esc` triggered full consolidation and range replacement;
 - final Notepad text preserved the original prefix and replaced only the session
   transcript.
+- Vosk partial text was visible in Notepad before the sentence ended.
+- Closing the guidance panel after round one and starting round two recreated it.
 
 ## Known Limitations
 
@@ -40,3 +42,5 @@ speech sample:
   because no disposable Feishu document was created during automated testing.
 - Elevated target applications remain subject to Windows UIPI restrictions.
 - Heavy custom editors may lack reliable UI Automation TextPattern ranges.
+- Final replacement falls back to keyboard deletion and Unicode retyping when
+  TextPattern is unavailable but the original window remains active.

@@ -99,3 +99,30 @@
   `glm-4.6` for final consolidation.
 - Reason: Live suggestions need low latency, while final editing needs stronger
   duplicate removal and grammar correction.
+
+## ADR-012: Add Local Vosk Streaming ASR
+
+- Status: Accepted
+- Date: 2026-11-21
+- Decision: Use Vosk Chinese streaming recognition for immediate partial text,
+  while retaining Zhipu for segment reconciliation and final editing.
+- Reason: Zhipu's file-oriented ASR cannot provide word-level input partials.
+- Tradeoff: The local model adds a one-time download and uses CPU resources.
+
+## ADR-013: Use Acrylic Circular And Guidance Surfaces
+
+- Status: Accepted
+- Date: 2026-11-21
+- Decision: Render the main entry as a 72 DIP translucent Acrylic orb and the
+  guidance surface as a rounded Acrylic panel, each with independent opacity.
+- Fallback: If Windows Acrylic composition is unavailable, retain the translucent
+  graphite visual instead of failing to render.
+
+## ADR-014: Use Unicode Diff Insertion For Live Text
+
+- Status: Accepted
+- Date: 2026-11-21
+- Decision: For live Vosk partials, compute the common prefix and send only the
+  required backspaces plus Unicode characters.
+- Reason: Rewriting the full text or using UIA for every character is slow and
+  incompatible with some custom editors.

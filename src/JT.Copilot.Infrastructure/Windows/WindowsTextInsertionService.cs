@@ -1,10 +1,12 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Automation.Text;
 using JT.Copilot.Application.Abstractions;
 using JT.Copilot.Application.Models;
+using JT.Copilot.Application.Text;
 using Microsoft.Extensions.Logging;
 
 namespace JT.Copilot.Infrastructure.Windows;
@@ -51,6 +53,11 @@ public sealed class WindowsTextInsertionService : ITextInsertionService
         {
             textPattern = availableTextPattern;
             startRange = availableTextPattern.GetSelection().FirstOrDefault()?.Clone();
+        }
+        else
+        {
+            textPattern = TryFindTextPattern(windowHandle);
+            startRange = textPattern?.GetSelection().FirstOrDefault()?.Clone();
         }
 
         var processName = GetProcessName((int)processId);
@@ -106,6 +113,43 @@ public sealed class WindowsTextInsertionService : ITextInsertionService
         }
     }
 
+    public async Task<TextInsertionResult> UpdateLiveDraftAsync(
+        string previousText,
+        string currentText,
+        ITextInsertionTarget target,
+        CancellationToken cancellationToken = default)
+    {
+        if (target is not WindowsTextInsertionTarget windowsTarget)
+        {
+            return new TextInsertionResult(false, "目标编辑器类型不受支持。");
+        }
+
+        if (!windowsTarget.IsActive)
+        {
+            return new TextInsertionResult(false, "焦点已离开原编辑器，实时文字暂停写入。");
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var previous = previousText ?? string.Empty;
+        var current = currentText ?? string.Empty;
+        var diff = LiveTextDiffCalculator.Calculate(previous, current);
+        var suffixToDelete = previous[diff.CommonPrefixLength..];
+        var suffixToType = current[diff.CommonPrefixLength..];
+
+        if (suffixToDelete.Length > 0)
+        {
+            SendBackspaces(StringInfo.ParseCombiningCharacters(suffixToDelete).Length);
+        }
+
+        if (suffixToType.Length > 0)
+        {
+            SendUnicodeText(suffixToType);
+        }
+
+        await Task.Delay(12, cancellationToken).ConfigureAwait(false);
+        return TextInsertionResult.Succeeded;
+    }
+
     public async Task<TextReplacementResult> ReplaceSessionTextAsync(
         string expectedText,
         string replacementText,
@@ -122,16 +166,20 @@ public sealed class WindowsTextInsertionService : ITextInsertionService
             return new TextReplacementResult(false, "焦点已离开原编辑器，优化全文未自动替换。");
         }
 
-        if (windowsTarget.TextPattern is null || windowsTarget.StartRange is null)
+        var textPattern = windowsTarget.TextPattern ?? TryFindTextPattern(windowsTarget.WindowHandle);
+        if (textPattern is null)
         {
-            return new TextReplacementResult(false, "当前编辑器不支持可靠的文本范围定位，优化全文未自动替换。");
+            return ReplaceWithKeyboardFallback(
+                expectedText,
+                replacementText,
+                windowsTarget);
         }
 
         try
         {
             var selected = await InvokeOnUiThreadAsync(() =>
             {
-                var currentSelection = windowsTarget.TextPattern
+                var currentSelection = textPattern
                     .GetSelection()
                     .FirstOrDefault()
                     ?.Clone();
@@ -141,7 +189,12 @@ public sealed class WindowsTextInsertionService : ITextInsertionService
                     return null;
                 }
 
-                var sessionRange = windowsTarget.StartRange.Clone();
+                var sessionRange = windowsTarget.StartRange?.Clone();
+                if (sessionRange is null)
+                {
+                    return null;
+                }
+
                 sessionRange.MoveEndpointByRange(
                     TextPatternRangeEndpoint.End,
                     currentSelection,
@@ -161,15 +214,16 @@ public sealed class WindowsTextInsertionService : ITextInsertionService
             var rangeToReplace = IsEquivalent(existingText, expectedText)
                 ? selected
                 : await FindTextRangeAsync(
-                    windowsTarget.TextPattern,
+                    textPattern,
                     expectedText,
                     cancellationToken).ConfigureAwait(false);
 
             if (rangeToReplace is null || !IsEquivalent(rangeToReplace.GetText(-1), expectedText))
             {
-                return new TextReplacementResult(
-                    false,
-                    "未能可靠定位本次会话写入的完整文字，已保留优化结果供手动替换。");
+                return ReplaceWithKeyboardFallback(
+                    expectedText,
+                    replacementText,
+                    windowsTarget);
             }
 
             await InvokeOnUiThreadAsync(
@@ -196,6 +250,27 @@ public sealed class WindowsTextInsertionService : ITextInsertionService
                 false,
                 $"优化全文替换失败：{exception.Message}");
         }
+    }
+
+    private static TextReplacementResult ReplaceWithKeyboardFallback(
+        string expectedText,
+        string replacementText,
+        WindowsTextInsertionTarget target)
+    {
+        if (!target.IsActive)
+        {
+            return new TextReplacementResult(false, "焦点已离开原编辑器，优化全文未自动替换。");
+        }
+
+        var textElementCount = StringInfo.ParseCombiningCharacters(expectedText).Length;
+        if (textElementCount == 0)
+        {
+            return new TextReplacementResult(false, "本次会话没有可替换的文字。");
+        }
+
+        SendBackspaces(textElementCount);
+        SendUnicodeText(replacementText);
+        return TextReplacementResult.Succeeded;
     }
 
     private async Task<TextInsertionResult> ReplaceSelectionWithClipboardAsync(
@@ -342,6 +417,62 @@ public sealed class WindowsTextInsertionService : ITextInsertionService
         SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Input>());
     }
 
+    private static void SendBackspaces(int count)
+    {
+        const int batchSize = 128;
+        for (var offset = 0; offset < count; offset += batchSize)
+        {
+            var currentBatch = Math.Min(batchSize, count - offset);
+            var inputs = new Input[currentBatch * 2];
+            for (var index = 0; index < currentBatch; index++)
+            {
+                inputs[index * 2] = CreateKeyboardInput(0x08, keyUp: false);
+                inputs[index * 2 + 1] = CreateKeyboardInput(0x08, keyUp: true);
+            }
+
+            SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Input>());
+        }
+    }
+
+    private static void SendUnicodeText(string text)
+    {
+        const uint unicodeFlag = 0x0004;
+        const uint keyUpFlag = 0x0002;
+        var inputs = new List<Input>(text.Length * 2);
+
+        foreach (var character in text)
+        {
+            inputs.Add(new Input
+            {
+                Type = 1,
+                Data = new InputUnion
+                {
+                    Keyboard = new KeyboardInput
+                    {
+                        VirtualKey = 0,
+                        ScanCode = character,
+                        Flags = unicodeFlag
+                    }
+                }
+            });
+            inputs.Add(new Input
+            {
+                Type = 1,
+                Data = new InputUnion
+                {
+                    Keyboard = new KeyboardInput
+                    {
+                        VirtualKey = 0,
+                        ScanCode = character,
+                        Flags = unicodeFlag | keyUpFlag
+                    }
+                }
+            });
+        }
+
+        SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf<Input>());
+    }
+
     private static Input CreateKeyboardInput(ushort virtualKey, bool keyUp)
     {
         return new Input
@@ -383,6 +514,50 @@ public sealed class WindowsTextInsertionService : ITextInsertionService
         }
     }
 
+    private static TextPattern? TryFindTextPattern(nint windowHandle)
+    {
+        var window = AutomationElement.FromHandle(windowHandle);
+        if (window is null)
+        {
+            return null;
+        }
+
+        var focused = AutomationElement.FocusedElement;
+        if (focused is not null && TryGetTextPattern(focused, out var focusedPattern))
+        {
+            return focusedPattern;
+        }
+
+        var candidates = window.FindAll(
+            TreeScope.Descendants,
+            new OrCondition(
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Document),
+                new PropertyCondition(AutomationElement.HasKeyboardFocusProperty, true)));
+
+        foreach (AutomationElement candidate in candidates)
+        {
+            if (TryGetTextPattern(candidate, out var pattern))
+            {
+                return pattern;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool TryGetTextPattern(AutomationElement element, out TextPattern? pattern)
+    {
+        if (element.TryGetCurrentPattern(TextPattern.Pattern, out var rawPattern)
+            && rawPattern is TextPattern textPattern)
+        {
+            pattern = textPattern;
+            return true;
+        }
+
+        pattern = null;
+        return false;
+    }
+
     private sealed class WindowsTextInsertionTarget(
         nint windowHandle,
         uint processId,
@@ -401,9 +576,26 @@ public sealed class WindowsTextInsertionService : ITextInsertionService
 
         public TextPatternRange? StartRange { get; } = startRange;
 
-        public bool IsActive =>
-            GetForegroundWindow() == WindowHandle
-            && AutomationElement.FocusedElement?.Current.ProcessId == ProcessId;
+        public bool IsActive
+        {
+            get
+            {
+                if (GetForegroundWindow() != WindowHandle)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    var focused = AutomationElement.FocusedElement;
+                    return focused is null || focused.Current.ProcessId == ProcessId;
+                }
+                catch (ElementNotAvailableException)
+                {
+                    return true;
+                }
+            }
+        }
 
         public string DisplayName { get; } = displayName;
 

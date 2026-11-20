@@ -47,4 +47,19 @@ public sealed class AppSettingsTests
 
         Assert.Equal(AppSettings.DefaultHotkey, normalized.Hotkey);
     }
+
+    [Fact]
+    public void Normalize_ClampsGlassOpacityRanges()
+    {
+        var settings = new AppSettings
+        {
+            OrbOpacityPercent = 5,
+            GuidanceOpacityPercent = 130
+        };
+
+        var normalized = settings.Normalize();
+
+        Assert.Equal(35, normalized.OrbOpacityPercent);
+        Assert.Equal(100, normalized.GuidanceOpacityPercent);
+    }
 }

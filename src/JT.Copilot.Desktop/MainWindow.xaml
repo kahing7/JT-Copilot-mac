@@ -5,10 +5,8 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="JT Copilot"
-        Width="372"
-        Height="166"
-        MinWidth="72"
-        MinHeight="72"
+        Width="72"
+        Height="72"
         WindowStyle="None"
         ResizeMode="NoResize"
         AllowsTransparency="True"
@@ -21,277 +19,144 @@
         Loaded="MainWindow_OnLoaded"
         Closing="MainWindow_OnClosing"
         SourceInitialized="MainWindow_OnSourceInitialized">
-    <Border x:Name="Shell"
-            Background="{StaticResource PanelBrush}"
-            BorderBrush="{StaticResource BorderBrush}"
-            BorderThickness="1"
-            CornerRadius="8">
-        <Border.Effect>
-            <DropShadowEffect BlurRadius="22"
-                              Direction="270"
-                              ShadowDepth="7"
-                              Opacity="0.36"
-                              Color="#000000" />
-        </Border.Effect>
-
-        <Grid>
-            <Grid>
-                <Grid.Style>
-                    <Style TargetType="Grid">
-                        <Setter Property="Visibility" Value="Visible" />
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding IsExpanded}" Value="False">
-                                <Setter Property="Visibility" Value="Collapsed" />
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </Grid.Style>
-
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="42" />
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="24" />
-                </Grid.RowDefinitions>
-
-                <Grid Grid.Row="0" Margin="12,6,8,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <Grid Grid.Column="0"
-                          Background="Transparent"
-                          MouseLeftButtonDown="Header_OnMouseLeftButtonDown">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <Border Width="24"
-                                    Height="24"
-                                    Background="{StaticResource AccentStrongBrush}"
-                                    CornerRadius="6">
-                                <TextBlock HorizontalAlignment="Center"
-                                           VerticalAlignment="Center"
-                                           FontSize="13"
-                                           FontWeight="Bold"
-                                           Foreground="{StaticResource AccentInkBrush}"
-                                           Text="J" />
-                            </Border>
-                            <TextBlock Margin="8,0,0,0"
-                                       VerticalAlignment="Center"
-                                       FontSize="13"
-                                       FontWeight="SemiBold"
-                                       Text="JT Copilot" />
-                            <Ellipse Width="6"
-                                     Height="6"
-                                     Margin="9,0,0,0"
-                                     VerticalAlignment="Center">
-                                <Ellipse.Style>
-                                    <Style TargetType="Ellipse">
-                                        <Setter Property="Fill" Value="{StaticResource TextTertiaryBrush}" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsRecording}" Value="True">
-                                                <Setter Property="Fill" Value="{StaticResource DangerBrush}" />
-                                            </DataTrigger>
-                                            <DataTrigger Binding="{Binding HasError}" Value="True">
-                                                <Setter Property="Fill" Value="{StaticResource WarningBrush}" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Ellipse.Style>
-                            </Ellipse>
-                        </StackPanel>
-                    </Grid>
-
-                    <StackPanel Grid.Column="1" Orientation="Horizontal">
-                        <Button Style="{StaticResource IconButtonStyle}"
-                                Command="{Binding ToggleTopmostCommand}"
-                                ToolTip="窗口置顶"
-                                AutomationProperties.Name="窗口置顶">
-                            <Viewbox Width="16" Height="16">
-                                <Path Data="M8,3 L16,3 L14,8 L18,12 L6,12 L10,8 Z M12,12 L12,21"
-                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                      StrokeThickness="1.7"
-                                      StrokeStartLineCap="Round"
-                                      StrokeEndLineCap="Round"
-                                      StrokeLineJoin="Round" />
-                            </Viewbox>
-                        </Button>
-                        <Button Style="{StaticResource IconButtonStyle}"
-                                Command="{Binding OpenSettingsCommand}"
-                                ToolTip="设置"
-                                AutomationProperties.Name="设置">
-                            <Viewbox Width="16" Height="16">
-                                <Path Data="M4,6 L20,6 M4,12 L20,12 M4,18 L20,18 M8,4 L8,8 M15,10 L15,14 M10,16 L10,20"
-                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                      StrokeThickness="1.7"
-                                      StrokeStartLineCap="Round"
-                                      StrokeEndLineCap="Round" />
-                            </Viewbox>
-                        </Button>
-                        <Button Style="{StaticResource IconButtonStyle}"
-                                Command="{Binding ToggleExpandedCommand}"
-                                ToolTip="收起"
-                                AutomationProperties.Name="收起">
-                            <Viewbox Width="16" Height="16">
-                                <Path Data="M6,14 L12,8 L18,14"
-                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                      StrokeThickness="1.8"
-                                      StrokeStartLineCap="Round"
-                                      StrokeEndLineCap="Round"
-                                      StrokeLineJoin="Round" />
-                            </Viewbox>
-                        </Button>
-                        <Button Style="{StaticResource IconButtonStyle}"
-                                Command="{Binding ExitCommand}"
-                                ToolTip="退出"
-                                AutomationProperties.Name="退出">
-                            <Viewbox Width="16" Height="16">
-                                <Path Data="M6,6 L18,18 M18,6 L6,18"
-                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                      StrokeThickness="1.7"
-                                      StrokeStartLineCap="Round"
-                                      StrokeEndLineCap="Round" />
-                            </Viewbox>
-                        </Button>
-                    </StackPanel>
-                </Grid>
-
-                <Grid Grid.Row="1" Margin="16,4,16,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="64" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <Button Grid.Column="0"
-                            Style="{StaticResource MicButtonStyle}"
-                            Tag="{Binding IsRecording}"
-                            Command="{Binding ToggleRecordingCommand}"
-                            ToolTip="{Binding MicrophoneActionLabel}"
-                            AutomationProperties.Name="{Binding MicrophoneActionLabel}">
-                        <Grid Width="28" Height="28">
-                            <Viewbox Width="26" Height="26">
-                                <Viewbox.Style>
-                                    <Style TargetType="Viewbox">
-                                        <Setter Property="Visibility" Value="Visible" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsRecording}" Value="True">
-                                                <Setter Property="Visibility" Value="Collapsed" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Viewbox.Style>
-                                <Path Data="M12,2 C10.3,2 9,3.3 9,5 L9,12 C9,13.7 10.3,15 12,15 C13.7,15 15,13.7 15,12 L15,5 C15,3.3 13.7,2 12,2 Z M19,10 L19,12 C19,15.9 15.9,19 12,19 C8.1,19 5,15.9 5,12 L5,10 M12,19 L12,22"
-                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                      StrokeThickness="1.9"
-                                      StrokeStartLineCap="Round"
-                                      StrokeEndLineCap="Round"
-                                      StrokeLineJoin="Round" />
-                            </Viewbox>
-                            <Rectangle Width="11"
-                                       Height="11"
-                                       RadiusX="2"
-                                       RadiusY="2"
-                                       Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}">
-                                <Rectangle.Style>
-                                    <Style TargetType="Rectangle">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsRecording}" Value="True">
-                                                <Setter Property="Visibility" Value="Visible" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Rectangle.Style>
-                            </Rectangle>
-                        </Grid>
-                    </Button>
-
-                    <StackPanel Grid.Column="1"
-                                Margin="12,0,10,0"
-                                VerticalAlignment="Center">
-                        <TextBlock FontSize="15"
-                                   FontWeight="SemiBold"
-                                   Text="{Binding StatusTitle}" />
-                        <TextBlock Margin="0,3,0,0"
-                                   FontSize="12"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                   Text="{Binding StatusDetail}"
-                                   TextTrimming="CharacterEllipsis"
-                                   ToolTip="{Binding StatusDetail}" />
-                    </StackPanel>
-
-                    <StackPanel Grid.Column="2"
-                                VerticalAlignment="Center"
-                                HorizontalAlignment="Right">
-                        <TextBlock HorizontalAlignment="Right"
-                                   FontFamily="Cascadia Mono, Consolas"
-                                   FontSize="17"
-                                   FontWeight="SemiBold"
-                                   Text="{Binding ElapsedText}" />
-                        <TextBlock Margin="0,2,0,0"
-                                   HorizontalAlignment="Right"
-                                   FontSize="10"
-                                   Foreground="{StaticResource TextTertiaryBrush}"
-                                   Text="{Binding StatusCode}" />
-                    </StackPanel>
-                </Grid>
-
-                <Grid Grid.Row="2" Margin="16,0,16,14">
-                    <ProgressBar Style="{StaticResource VolumeProgressStyle}"
-                                 Maximum="100"
-                                 Value="{Binding AudioLevelPercent, Mode=OneWay}" />
-                </Grid>
-            </Grid>
+    <Grid Width="72"
+          Height="72"
+          Background="{x:Null}"
+          Opacity="{Binding OrbOpacityScale}">
+        <Border x:Name="OrbSurface"
+                Width="64"
+                Height="64"
+                Background="#C2131C25"
+                BorderThickness="1"
+                CornerRadius="32"
+                Cursor="Hand"
+                MouseLeftButtonDown="Orb_OnMouseLeftButtonDown">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="18"
+                                  Direction="270"
+                                  ShadowDepth="5"
+                                  Opacity="0.3"
+                                  Color="#000000" />
+            </Border.Effect>
+            <Border.ContextMenu>
+                <ContextMenu Style="{StaticResource OrbContextMenuStyle}"
+                             DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                    <MenuItem Header="设置"
+                              Style="{StaticResource OrbMenuItemStyle}"
+                              Command="{Binding OpenSettingsCommand}" />
+                    <MenuItem Header="显示或隐藏引导面板"
+                              Style="{StaticResource OrbMenuItemStyle}"
+                              Command="{Binding ToggleGuidanceCommand}" />
+                    <MenuItem Header="窗口置顶"
+                              Style="{StaticResource OrbMenuItemStyle}"
+                              Command="{Binding ToggleTopmostCommand}" />
+                    <Separator Style="{StaticResource OrbMenuSeparatorStyle}" />
+                    <MenuItem Header="退出"
+                              Style="{StaticResource OrbMenuItemStyle}"
+                              Command="{Binding ExitCommand}" />
+                </ContextMenu>
+            </Border.ContextMenu>
 
             <Grid>
-                <Grid.Style>
-                    <Style TargetType="Grid">
-                        <Setter Property="Visibility" Value="Collapsed" />
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding IsExpanded}" Value="False">
-                                <Setter Property="Visibility" Value="Visible" />
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </Grid.Style>
+                <Ellipse x:Name="RecordingRing"
+                         Width="58"
+                         Height="58"
+                         Fill="Transparent"
+                         Stroke="#54FB7185"
+                         StrokeThickness="2">
+                    <Ellipse.Style>
+                        <Style TargetType="Ellipse">
+                            <Setter Property="Opacity" Value="0" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsRecording}" Value="True">
+                                    <Setter Property="Opacity" Value="1" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Ellipse.Style>
+                </Ellipse>
 
-                <Button Width="48"
-                        Height="48"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center"
-                        Style="{StaticResource MicButtonStyle}"
+                <Button Style="{StaticResource OrbMicButtonStyle}"
                         Tag="{Binding IsRecording}"
                         Command="{Binding ToggleRecordingCommand}"
                         ToolTip="{Binding MicrophoneActionLabel}"
                         AutomationProperties.Name="{Binding MicrophoneActionLabel}">
-                    <Viewbox Width="24" Height="24">
-                        <Path Data="M12,2 C10.3,2 9,3.3 9,5 L9,12 C9,13.7 10.3,15 12,15 C13.7,15 15,13.7 15,12 L15,5 C15,3.3 13.7,2 12,2 Z M19,10 L19,12 C19,15.9 15.9,19 12,19 C8.1,19 5,15.9 5,12 L5,10 M12,19 L12,22"
-                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                              StrokeThickness="1.9"
-                              StrokeStartLineCap="Round"
-                              StrokeEndLineCap="Round"
-                              StrokeLineJoin="Round" />
-                    </Viewbox>
+                    <Grid Width="24" Height="24">
+                        <Viewbox Width="22" Height="22">
+                            <Viewbox.Style>
+                                <Style TargetType="Viewbox">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsRecording}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Viewbox.Style>
+                            <Path Data="M12,2 C10.3,2 9,3.3 9,5 L9,12 C9,13.7 10.3,15 12,15 C13.7,15 15,13.7 15,12 L15,5 C15,3.3 13.7,2 12,2 Z M19,10 L19,12 C19,15.9 15.9,19 12,19 C8.1,19 5,15.9 5,12 L5,10 M12,19 L12,22"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  StrokeThickness="1.9"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  StrokeLineJoin="Round" />
+                        </Viewbox>
+                        <Rectangle Width="10"
+                                   Height="10"
+                                   RadiusX="2"
+                                   RadiusY="2"
+                                   Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}">
+                            <Rectangle.Style>
+                                <Style TargetType="Rectangle">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsRecording}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Rectangle.Style>
+                        </Rectangle>
+                    </Grid>
                 </Button>
 
-                <Button Width="22"
-                        Height="22"
-                        Margin="0,0,4,4"
-                        HorizontalAlignment="Right"
-                        VerticalAlignment="Bottom"
-                        Style="{StaticResource IconButtonStyle}"
-                        Command="{Binding ToggleExpandedCommand}"
-                        ToolTip="展开"
-                        AutomationProperties.Name="展开">
-                    <Viewbox Width="12" Height="12">
-                        <Path Data="M6,10 L12,16 L18,10"
-                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                              StrokeThickness="1.8"
-                              StrokeStartLineCap="Round"
-                              StrokeEndLineCap="Round"
-                              StrokeLineJoin="Round" />
-                    </Viewbox>
-                </Button>
+                <Ellipse Width="7"
+                         Height="7"
+                         Margin="0,5,5,0"
+                         HorizontalAlignment="Right"
+                         VerticalAlignment="Top"
+                         IsHitTestVisible="False">
+                    <Ellipse.Style>
+                        <Style TargetType="Ellipse">
+                            <Setter Property="Fill" Value="{StaticResource TextSecondaryBrush}" />
+                            <Setter Property="Opacity" Value="0.6" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsRecording}" Value="True">
+                                    <Setter Property="Fill" Value="{StaticResource DangerBrush}" />
+                                    <Setter Property="Opacity" Value="1" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding HasError}" Value="True">
+                                    <Setter Property="Fill" Value="{StaticResource WarningBrush}" />
+                                    <Setter Property="Opacity" Value="1" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Ellipse.Style>
+                </Ellipse>
             </Grid>
-        </Grid>
-    </Border>
+
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="BorderBrush" Value="#8A435362" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsRecording}" Value="True">
+                            <Setter Property="BorderBrush" Value="#B8FB7185" />
+                        </DataTrigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="BorderBrush" Value="#D7FFFFFF" />
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+        </Border>
+    </Grid>
 </Window>

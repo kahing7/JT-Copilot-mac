@@ -22,6 +22,7 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
     private readonly IGlobalHotkeyService _globalHotkeyService;
     private readonly IAppSettingsStore _settingsStore;
     private readonly ISpeechRecognitionProvider _speechRecognitionProvider;
+    private readonly IStreamingSpeechRecognitionProvider _streamingSpeechRecognitionProvider;
     private readonly IWritingModelProvider _writingModelProvider;
     private readonly ITextInsertionService _textInsertionService;
     private readonly SemaphoreSlim _stateGate = new(1, 1);
@@ -29,15 +30,18 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
     private readonly object _segmentLock = new();
     private readonly object _chainLock = new();
     private readonly object _transcriptLock = new();
+    private readonly object _liveQueueLock = new();
 
     private readonly MemoryStream _segmentPcm = new();
     private readonly StringBuilder _stableTranscript = new();
     private readonly List<string> _segmentTexts = [];
+    private readonly Queue<LiveTranscriptEventArgs> _liveTranscriptQueue = new();
 
     private Timer? _elapsedTimer;
     private Task _segmentChain = Task.CompletedTask;
     private CancellationTokenSource? _sessionCancellation;
     private CancellationTokenSource? _analysisCancellation;
+    private Task<bool>? _streamingInitializationTask;
     private ITextInsertionTarget? _insertionTarget;
     private WritingGuidance _guidance = WritingGuidance.Empty;
     private DateTimeOffset _segmentStartedAt;
@@ -48,7 +52,11 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
     private string _optimizedTranscript = string.Empty;
     private string _replacementMessage = string.Empty;
     private string _statusMessage = string.Empty;
+    private string _liveCommittedText = string.Empty;
+    private string _liveSessionText = string.Empty;
     private bool _hasSpeech;
+    private bool _liveRecognitionAvailable;
+    private bool _liveWorkerRunning;
     private bool _initialized;
     private bool _finishing;
     private bool _disposed;
@@ -58,6 +66,7 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
         IGlobalHotkeyService globalHotkeyService,
         IAppSettingsStore settingsStore,
         ISpeechRecognitionProvider speechRecognitionProvider,
+        IStreamingSpeechRecognitionProvider streamingSpeechRecognitionProvider,
         IWritingModelProvider writingModelProvider,
         ITextInsertionService textInsertionService)
     {
@@ -65,6 +74,7 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
         _globalHotkeyService = globalHotkeyService;
         _settingsStore = settingsStore;
         _speechRecognitionProvider = speechRecognitionProvider;
+        _streamingSpeechRecognitionProvider = streamingSpeechRecognitionProvider;
         _writingModelProvider = writingModelProvider;
         _textInsertionService = textInsertionService;
 
@@ -72,6 +82,7 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
         _globalHotkeyService.CancelRequested += OnEscapePressed;
         _audioCaptureService.LevelChanged += OnAudioLevelChanged;
         _audioCaptureService.PcmDataAvailable += OnPcmDataAvailable;
+        _streamingSpeechRecognitionProvider.TranscriptChanged += OnLiveTranscriptChanged;
     }
 
     public event EventHandler<VoiceCaptureStateChangedEventArgs>? StateChanged;
@@ -105,6 +116,7 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
             // WPF dispatcher can deliver hook callbacks.
             var settings = await _settingsStore.LoadAsync(cancellationToken);
             _globalHotkeyService.Start(HotkeyGesture.ParseOrDefault(settings.Hotkey));
+            _streamingInitializationTask ??= _streamingSpeechRecognitionProvider.InitializeAsync();
             _initialized = true;
         }
         catch (Exception exception)
@@ -129,6 +141,19 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
             }
 
             ResetSession();
+            PublishSessionUpdate("正在准备本地实时识别...");
+            _liveRecognitionAvailable = _streamingInitializationTask is not null
+                && await _streamingInitializationTask.ConfigureAwait(false);
+
+            if (_liveRecognitionAvailable)
+            {
+                _streamingSpeechRecognitionProvider.StartSession();
+            }
+            else
+            {
+                PublishSessionUpdate("本地实时引擎不可用，已回退到智谱分片识别。");
+            }
+
             _insertionTarget = await _textInsertionService
                 .CaptureTargetAsync(cancellationToken)
                 .ConfigureAwait(false);
@@ -208,6 +233,14 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
                 CapturePendingSegment(force: true);
             }
 
+            var generation = _sessionGeneration;
+            var finalLiveText = _streamingSpeechRecognitionProvider.EndSession();
+            await DrainLiveTranscriptQueueAsync().ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(finalLiveText))
+            {
+                await ApplyLiveTextAsync(finalLiveText, isFinal: true, generation).ConfigureAwait(false);
+            }
+
             Task segmentChain;
             lock (_chainLock)
             {
@@ -244,6 +277,7 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
             CancelAnalysis();
             _sessionCancellation?.Cancel();
             _audioCaptureService.Cancel();
+            _ = _streamingSpeechRecognitionProvider.EndSession();
             ResetBuffers();
             _insertionTarget?.Dispose();
             _insertionTarget = null;
@@ -285,6 +319,7 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
         _globalHotkeyService.CancelRequested -= OnEscapePressed;
         _audioCaptureService.LevelChanged -= OnAudioLevelChanged;
         _audioCaptureService.PcmDataAvailable -= OnPcmDataAvailable;
+        _streamingSpeechRecognitionProvider.TranscriptChanged -= OnLiveTranscriptChanged;
         _insertionTarget?.Dispose();
         _segmentPcm.Dispose();
         _stateGate.Dispose();
@@ -322,6 +357,11 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
 
         lock (_segmentLock)
         {
+            if (_liveRecognitionAvailable)
+            {
+                _streamingSpeechRecognitionProvider.PushAudio(e.PcmData);
+            }
+
             _segmentPcm.Write(e.PcmData.Span);
             var now = DateTimeOffset.UtcNow;
 
@@ -417,6 +457,12 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
                 _segmentTexts.Add(segmentText.Trim());
             }
 
+            if (_liveRecognitionAvailable)
+            {
+                QueueGuidanceUpdate(GetDocumentTranscript(), generation);
+                return;
+            }
+
             var appendedText = AppendTranscript(segmentText);
             if (string.IsNullOrWhiteSpace(appendedText))
             {
@@ -501,7 +547,7 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
     private async Task CompleteSessionAsync(CancellationToken cancellationToken)
     {
         CancelAnalysis();
-        var transcript = GetStableTranscript();
+        var transcript = GetDocumentTranscript();
 
         if (string.IsNullOrWhiteSpace(transcript))
         {
@@ -600,11 +646,18 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
         }
     }
 
+    private string GetDocumentTranscript()
+    {
+        return _liveRecognitionAvailable && !string.IsNullOrWhiteSpace(_liveSessionText)
+            ? _liveSessionText.Trim()
+            : GetStableTranscript();
+    }
+
     private void PublishSessionUpdate(string statusMessage)
     {
         _statusMessage = statusMessage;
         var update = new WritingSessionUpdate(
-            GetStableTranscript(),
+            GetDocumentTranscript(),
             _draftTranscript,
             _guidance,
             _statusMessage,
@@ -661,6 +714,15 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
         _optimizedTranscript = string.Empty;
         _replacementMessage = string.Empty;
         _statusMessage = string.Empty;
+        _liveCommittedText = string.Empty;
+        _liveSessionText = string.Empty;
+        _liveRecognitionAvailable = false;
+
+        lock (_liveQueueLock)
+        {
+            _liveTranscriptQueue.Clear();
+            _liveWorkerRunning = false;
+        }
 
         lock (_chainLock)
         {
@@ -707,6 +769,7 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
         _globalHotkeyService.CaptureEscape = false;
         StopElapsedTimer();
         _audioCaptureService.Cancel();
+        _ = _streamingSpeechRecognitionProvider.EndSession();
         _insertionTarget?.Dispose();
         _insertionTarget = null;
         CancelAnalysis();
@@ -715,6 +778,7 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
     private void DisposeSessionResources()
     {
         _globalHotkeyService.CaptureEscape = false;
+        _ = _streamingSpeechRecognitionProvider.EndSession();
         _insertionTarget?.Dispose();
         _insertionTarget = null;
         _sessionCancellation?.Dispose();
@@ -785,6 +849,130 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
         }
 
         return buffer.ToString();
+    }
+
+    private void OnLiveTranscriptChanged(object? sender, LiveTranscriptEventArgs e)
+    {
+        if (!_liveRecognitionAvailable || Current.State != VoiceCaptureState.Recording)
+        {
+            return;
+        }
+
+        lock (_liveQueueLock)
+        {
+            _liveTranscriptQueue.Enqueue(e);
+            if (_liveWorkerRunning)
+            {
+                return;
+            }
+
+            _liveWorkerRunning = true;
+        }
+
+        _ = ProcessLiveTranscriptQueueAsync(_sessionGeneration);
+    }
+
+    private async Task ProcessLiveTranscriptQueueAsync(int generation)
+    {
+        try
+        {
+            while (generation == _sessionGeneration)
+            {
+                LiveTranscriptEventArgs? update;
+                lock (_liveQueueLock)
+                {
+                    if (_liveTranscriptQueue.Count == 0)
+                    {
+                        _liveWorkerRunning = false;
+                        return;
+                    }
+
+                    update = _liveTranscriptQueue.Dequeue();
+                }
+
+                await ApplyLiveTextAsync(update.Text, update.IsFinal, generation).ConfigureAwait(false);
+                await Task.Delay(55).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            lock (_liveQueueLock)
+            {
+                _liveWorkerRunning = false;
+            }
+        }
+    }
+
+    private async Task ApplyLiveTextAsync(string text, bool isFinal, int generation)
+    {
+        if (!_liveRecognitionAvailable
+            || generation != _sessionGeneration
+            || _insertionTarget is null
+            || string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        var baseText = isFinal
+            ? AppendText(_liveCommittedText, text)
+            : AppendText(_liveCommittedText, text);
+        var previousDocumentText = _liveSessionText;
+        var updateResult = await _textInsertionService
+            .UpdateLiveDraftAsync(previousDocumentText, baseText, _insertionTarget)
+            .ConfigureAwait(false);
+
+        if (!updateResult.Success)
+        {
+            PublishSessionUpdate(updateResult.Message);
+            return;
+        }
+
+        _draftTranscript = text;
+        _liveSessionText = baseText;
+        if (isFinal)
+        {
+            _liveCommittedText = baseText;
+        }
+
+        PublishSessionUpdate(isFinal
+            ? "已确认一句，继续实时输入..."
+            : "正在实时输入...");
+        QueueGuidanceUpdate(GetDocumentTranscript(), generation);
+    }
+
+    private async Task DrainLiveTranscriptQueueAsync()
+    {
+        while (true)
+        {
+            lock (_liveQueueLock)
+            {
+                if (!_liveWorkerRunning && _liveTranscriptQueue.Count == 0)
+                {
+                    return;
+                }
+            }
+
+            await Task.Delay(25).ConfigureAwait(false);
+        }
+    }
+
+    private static string AppendText(string existing, string incoming)
+    {
+        var normalizedIncoming = incoming.Trim();
+        if (string.IsNullOrWhiteSpace(existing))
+        {
+            return normalizedIncoming;
+        }
+
+        var overlap = FindOverlap(existing, normalizedIncoming);
+        var newText = normalizedIncoming[overlap..];
+        if (string.IsNullOrWhiteSpace(newText))
+        {
+            return existing;
+        }
+
+        var separator = NeedsSpace(existing, newText) ? " " : string.Empty;
+        return existing + separator + newText;
     }
 
     private static byte[] CreateWaveFile(byte[] pcm)

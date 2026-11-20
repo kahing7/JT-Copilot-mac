@@ -63,6 +63,7 @@ public sealed class VoiceCaptureCoordinatorTests
             hotkey,
             new FakeSettingsStore(),
             new FakeSpeechRecognitionProvider(),
+            new FakeStreamingSpeechRecognitionProvider(),
             new FakeWritingModelProvider(),
             new FakeTextInsertionService());
     }
@@ -194,6 +195,39 @@ public sealed class VoiceCaptureCoordinatorTests
         }
     }
 
+    private sealed class FakeStreamingSpeechRecognitionProvider : IStreamingSpeechRecognitionProvider
+    {
+        public event EventHandler<LiveTranscriptEventArgs>? TranscriptChanged
+        {
+            add { }
+            remove { }
+        }
+
+        public bool IsAvailable => false;
+
+        public Task<bool> InitializeAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(false);
+        }
+
+        public void StartSession()
+        {
+        }
+
+        public void PushAudio(ReadOnlyMemory<byte> pcmAudio)
+        {
+        }
+
+        public string EndSession()
+        {
+            return string.Empty;
+        }
+
+        public void Dispose()
+        {
+        }
+    }
+
     private sealed class FakeWritingModelProvider : IWritingModelProvider
     {
         public Task<WritingGuidance> AnalyzeAsync(
@@ -229,6 +263,15 @@ public sealed class VoiceCaptureCoordinatorTests
 
         public Task<TextInsertionResult> InsertAsync(
             string text,
+            ITextInsertionTarget target,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(TextInsertionResult.Succeeded);
+        }
+
+        public Task<TextInsertionResult> UpdateLiveDraftAsync(
+            string previousText,
+            string currentText,
             ITextInsertionTarget target,
             CancellationToken cancellationToken = default)
         {

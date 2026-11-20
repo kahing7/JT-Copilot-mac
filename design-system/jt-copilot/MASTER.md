@@ -39,11 +39,11 @@ competing accent colors.
 
 - Surface radius: 8 DIP maximum.
 - Control radius: 6 DIP.
-- Expanded widget: `372 x 166` DIP.
-- Collapsed widget: `72 x 72` DIP.
+- Floating orb: `72 x 72` DIP.
 - Icon controls: 32 DIP with at least 6 DIP internal padding.
 - Primary microphone control: 56 DIP expanded, 48 DIP collapsed.
 - Guidance panel: `430 x 472` DIP with a vertical reading flow.
+- Default orb opacity: `78%`; default guidance opacity: `68%`.
 - Keep fixed dimensions so status text and recording state cannot resize the
   widget.
 
@@ -56,6 +56,7 @@ competing accent colors.
 - The floating widget never takes keyboard focus from the target application.
 - The guidance panel is topmost and non-activating; it must never steal the
   document caret.
+- Live recognition uses Unicode insertion with minimal backspace corrections.
 - Settings is a normal keyboard-accessible window.
 - Tooltips describe unfamiliar icon actions.
 

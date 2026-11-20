@@ -12,11 +12,14 @@
         ShowActivated="False"
         Topmost="True"
         WindowStartupLocation="Manual"
-        SourceInitialized="GuidanceWindow_OnSourceInitialized">
-    <Border Background="{StaticResource PanelSolidBrush}"
+        SourceInitialized="GuidanceWindow_OnSourceInitialized"
+        DataContextChanged="GuidanceWindow_OnDataContextChanged"
+        Closed="GuidanceWindow_OnClosed">
+    <Border Background="#B8131C25"
             BorderBrush="{StaticResource BorderBrush}"
             BorderThickness="1"
-            CornerRadius="8">
+            CornerRadius="18"
+            Opacity="{Binding GuidanceOpacityScale}">
         <Border.Effect>
             <DropShadowEffect BlurRadius="28"
                               Direction="270"

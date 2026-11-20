@@ -15,4 +15,8 @@ public static class AppPaths
     public static string SecretsDirectory { get; } = Path.Combine(RootDirectory, "secrets");
 
     public static string ZhipuApiKeyFilePath { get; } = Path.Combine(SecretsDirectory, "zhipu-api-key.bin");
+
+    public static string ModelsDirectory { get; } = Path.Combine(RootDirectory, "models");
+
+    public static string VoskModelDirectory { get; } = Path.Combine(ModelsDirectory, "vosk-model-small-cn-0.22");
 }

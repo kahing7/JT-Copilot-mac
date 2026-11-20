@@ -29,6 +29,8 @@ public static class InfrastructureServiceCollectionExtensions
                 provider.GetRequiredService<ILogger<ZhipuApiKeyStore>>()));
         services.AddSingleton<ISpeechRecognitionProvider, ZhipuSpeechRecognitionProvider>();
         services.AddSingleton<IWritingModelProvider, ZhipuWritingModelProvider>();
+        services.AddSingleton<VoskModelProvisioner>();
+        services.AddSingleton<IStreamingSpeechRecognitionProvider, VoskStreamingSpeechRecognitionProvider>();
         services.AddSingleton<IAudioCaptureService, WaveAudioCaptureService>();
         services.AddSingleton<IGlobalHotkeyService, GlobalHotkeyService>();
         services.AddSingleton<ITextInsertionService, WindowsTextInsertionService>();

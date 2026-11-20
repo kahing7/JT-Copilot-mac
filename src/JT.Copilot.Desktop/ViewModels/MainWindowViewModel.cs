@@ -48,6 +48,12 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private bool isTopmost = true;
 
     [ObservableProperty]
+    private double orbOpacityPercent = 78;
+
+    [ObservableProperty]
+    private double guidanceOpacityPercent = 68;
+
+    [ObservableProperty]
     private string statusTitle = "准备就绪";
 
     [ObservableProperty]
@@ -130,6 +136,10 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
     public double AudioLevelPercent => AudioLevel * 100;
 
+    public double OrbOpacityScale => OrbOpacityPercent / 100d;
+
+    public double GuidanceOpacityScale => GuidanceOpacityPercent / 100d;
+
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         _isInitializing = true;
@@ -140,6 +150,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             HotkeyText = FormatHotkey(_settings.Hotkey);
             IsTopmost = _settings.IsTopmost;
             IsExpanded = _settings.IsExpanded;
+            OrbOpacityPercent = _settings.OrbOpacityPercent;
+            GuidanceOpacityPercent = _settings.GuidanceOpacityPercent;
 
             AudioDevices.Clear();
             foreach (var device in _audioCaptureService.GetInputDevices())
@@ -356,6 +368,12 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
+    private void ToggleGuidance()
+    {
+        IsGuidanceVisible = !IsGuidanceVisible;
+    }
+
+    [RelayCommand]
     private void DismissGuidance()
     {
         IsGuidanceVisible = false;
@@ -399,6 +417,30 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         _settings = (_settings with { IsTopmost = value }).Normalize();
+        _ = PersistSettingsAsync();
+    }
+
+    partial void OnOrbOpacityPercentChanged(double value)
+    {
+        OnPropertyChanged(nameof(OrbOpacityScale));
+        if (_isInitializing)
+        {
+            return;
+        }
+
+        _settings = (_settings with { OrbOpacityPercent = value }).Normalize();
+        _ = PersistSettingsAsync();
+    }
+
+    partial void OnGuidanceOpacityPercentChanged(double value)
+    {
+        OnPropertyChanged(nameof(GuidanceOpacityScale));
+        if (_isInitializing)
+        {
+            return;
+        }
+
+        _settings = (_settings with { GuidanceOpacityPercent = value }).Normalize();
         _ = PersistSettingsAsync();
     }
 

@@ -19,6 +19,12 @@ public interface ITextInsertionService
         ITextInsertionTarget target,
         CancellationToken cancellationToken = default);
 
+    Task<TextInsertionResult> UpdateLiveDraftAsync(
+        string previousText,
+        string currentText,
+        ITextInsertionTarget target,
+        CancellationToken cancellationToken = default);
+
     Task<TextReplacementResult> ReplaceSessionTextAsync(
         string expectedText,
         string replacementText,
