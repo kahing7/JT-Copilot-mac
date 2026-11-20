@@ -43,6 +43,7 @@ competing accent colors.
 - Collapsed widget: `72 x 72` DIP.
 - Icon controls: 32 DIP with at least 6 DIP internal padding.
 - Primary microphone control: 56 DIP expanded, 48 DIP collapsed.
+- Guidance panel: `430 x 472` DIP with a vertical reading flow.
 - Keep fixed dimensions so status text and recording state cannot resize the
   widget.
 
@@ -53,6 +54,8 @@ competing accent colors.
 - Recording is communicated through state text, timer, muted-red status dot, stop
   icon, and live volume level.
 - The floating widget never takes keyboard focus from the target application.
+- The guidance panel is topmost and non-activating; it must never steal the
+  document caret.
 - Settings is a normal keyboard-accessible window.
 - Tooltips describe unfamiliar icon actions.
 

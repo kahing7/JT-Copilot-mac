@@ -6,6 +6,8 @@ public interface IAudioCaptureService : IDisposable
 {
     event EventHandler<AudioLevelChangedEventArgs>? LevelChanged;
 
+    event EventHandler<PcmAudioDataEventArgs>? PcmDataAvailable;
+
     bool IsCapturing { get; }
 
     IReadOnlyList<AudioDeviceDescriptor> GetInputDevices();

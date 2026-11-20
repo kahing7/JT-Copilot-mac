@@ -4,6 +4,8 @@ public enum VoiceCaptureState
 {
     Idle,
     Recording,
+    Processing,
+    Completed,
     Captured,
     Faulted
 }

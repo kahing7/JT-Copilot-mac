@@ -33,6 +33,15 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private bool isCaptured;
 
     [ObservableProperty]
+    private bool isProcessing;
+
+    [ObservableProperty]
+    private bool isSessionActive;
+
+    [ObservableProperty]
+    private bool isGuidanceVisible;
+
+    [ObservableProperty]
     private bool hasError;
 
     [ObservableProperty]
@@ -68,6 +77,21 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string lastRecordingPath = string.Empty;
 
+    [ObservableProperty]
+    private string liveTranscript = string.Empty;
+
+    [ObservableProperty]
+    private string sessionStatus = string.Empty;
+
+    [ObservableProperty]
+    private string nextSentence = string.Empty;
+
+    [ObservableProperty]
+    private string optimizedTranscript = string.Empty;
+
+    [ObservableProperty]
+    private string replacementMessage = string.Empty;
+
     public MainWindowViewModel(
         IVoiceCaptureCoordinator voiceCaptureCoordinator,
         IAppSettingsStore settingsStore,
@@ -81,6 +105,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
         _voiceCaptureCoordinator.StateChanged += OnVoiceCaptureStateChanged;
         _voiceCaptureCoordinator.LevelChanged += OnAudioLevelChanged;
+        _voiceCaptureCoordinator.WritingSessionChanged += OnWritingSessionChanged;
     }
 
     public event EventHandler? SettingsRequested;
@@ -88,6 +113,12 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     public event EventHandler? CloseRequested;
 
     public ObservableCollection<AudioDeviceDescriptor> AudioDevices { get; } = [];
+
+    public ObservableCollection<string> FrameworkItems { get; } = [];
+
+    public ObservableCollection<string> DirectionItems { get; } = [];
+
+    public ObservableCollection<string> MissingPointItems { get; } = [];
 
     public AppSettings Settings => _settings;
 
@@ -122,6 +153,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
             await _voiceCaptureCoordinator.InitializeAsync(cancellationToken);
             ApplySnapshot(_voiceCaptureCoordinator.Current);
+            ApplyWritingUpdate(_voiceCaptureCoordinator.CurrentWritingSession);
         }
         finally
         {
@@ -310,6 +342,25 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         });
     }
 
+    [RelayCommand]
+    private void CopyOptimizedText()
+    {
+        var text = string.IsNullOrWhiteSpace(OptimizedTranscript)
+            ? LiveTranscript
+            : OptimizedTranscript;
+
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            System.Windows.Clipboard.SetText(text);
+        }
+    }
+
+    [RelayCommand]
+    private void DismissGuidance()
+    {
+        IsGuidanceVisible = false;
+    }
+
     public void Dispose()
     {
         if (_disposed)
@@ -320,6 +371,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _disposed = true;
         _voiceCaptureCoordinator.StateChanged -= OnVoiceCaptureStateChanged;
         _voiceCaptureCoordinator.LevelChanged -= OnAudioLevelChanged;
+        _voiceCaptureCoordinator.WritingSessionChanged -= OnWritingSessionChanged;
     }
 
     partial void OnIsExpandedChanged(bool value)
@@ -380,19 +432,58 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         RunOnUiThread(() => AudioLevel = e.Level);
     }
 
+    private void OnWritingSessionChanged(object? sender, WritingSessionUpdateEventArgs e)
+    {
+        RunOnUiThread(() => ApplyWritingUpdate(e.Update));
+    }
+
+    private void ApplyWritingUpdate(WritingSessionUpdate update)
+    {
+        LiveTranscript = update.StableTranscript;
+        SessionStatus = update.StatusText;
+        NextSentence = update.Guidance.NextSentence;
+        OptimizedTranscript = update.OptimizedTranscript;
+        ReplacementMessage = update.ReplacementMessage;
+
+        ReplaceItems(FrameworkItems, update.Guidance.Framework);
+        ReplaceItems(DirectionItems, update.Guidance.Directions);
+        ReplaceItems(MissingPointItems, update.Guidance.MissingPoints);
+
+        if (IsRecording)
+        {
+            StatusDetail = update.StatusText;
+        }
+        else if (IsProcessing)
+        {
+            StatusDetail = update.StatusText;
+        }
+        else if (IsCaptured && !string.IsNullOrWhiteSpace(update.ReplacementMessage))
+        {
+            StatusDetail = update.ReplacementMessage;
+        }
+    }
+
     private void ApplySnapshot(VoiceCaptureSnapshot snapshot)
     {
         IsRecording = snapshot.State == VoiceCaptureState.Recording;
-        IsCaptured = snapshot.State == VoiceCaptureState.Captured;
+        IsProcessing = snapshot.State == VoiceCaptureState.Processing;
+        IsCaptured = snapshot.State is VoiceCaptureState.Completed or VoiceCaptureState.Captured;
+        IsSessionActive = snapshot.State is VoiceCaptureState.Recording or VoiceCaptureState.Processing;
         HasError = snapshot.State == VoiceCaptureState.Faulted;
+        if (snapshot.State == VoiceCaptureState.Idle)
+        {
+            IsGuidanceVisible = false;
+        }
+
         if (IsRecording)
         {
             IsExpanded = true;
+            IsGuidanceVisible = true;
         }
 
         AudioLevel = IsRecording ? AudioLevel : 0;
         ElapsedText = FormatDuration(snapshot.Elapsed);
-        MicrophoneActionLabel = IsRecording ? "结束录音" : "开始录音";
+        MicrophoneActionLabel = IsRecording ? "结束并优化" : "开始写作";
 
         switch (snapshot.State)
         {
@@ -402,14 +493,26 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                 StatusCode = "IDLE";
                 break;
             case VoiceCaptureState.Recording:
-                StatusTitle = "正在聆听";
-                StatusDetail = SelectedMicrophone?.DisplayName ?? "默认麦克风";
-                StatusCode = "REC";
+                StatusTitle = "正在实时写作";
+                StatusDetail = string.IsNullOrWhiteSpace(SessionStatus)
+                    ? "正在聆听"
+                    : SessionStatus;
+                StatusCode = "LIVE";
                 break;
+            case VoiceCaptureState.Processing:
+                StatusTitle = "正在整理全文";
+                StatusDetail = string.IsNullOrWhiteSpace(SessionStatus)
+                    ? "正在检查文字和表达"
+                    : SessionStatus;
+                StatusCode = "POLISH";
+                break;
+            case VoiceCaptureState.Completed:
             case VoiceCaptureState.Captured:
-                StatusTitle = "录音已保存";
-                StatusDetail = $"{FormatDuration(snapshot.Elapsed)} · 已保存到本机";
-                StatusCode = "SAVED";
+                StatusTitle = "会话已完成";
+                StatusDetail = string.IsNullOrWhiteSpace(ReplacementMessage)
+                    ? $"{FormatDuration(snapshot.Elapsed)} · 全文已优化"
+                    : ReplacementMessage;
+                StatusCode = "DONE";
                 LastRecordingPath = snapshot.RecordingPath ?? string.Empty;
                 break;
             case VoiceCaptureState.Faulted:
@@ -417,6 +520,17 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                 StatusDetail = snapshot.ErrorMessage ?? "录音暂不可用";
                 StatusCode = "ERROR";
                 break;
+        }
+    }
+
+    private static void ReplaceItems(
+        ObservableCollection<string> destination,
+        IReadOnlyList<string> values)
+    {
+        destination.Clear();
+        foreach (var value in values)
+        {
+            destination.Add(value);
         }
     }
 

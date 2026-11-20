@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text.Json;
 using JT.Copilot.Application.Abstractions;
 using JT.Copilot.Application.Models;

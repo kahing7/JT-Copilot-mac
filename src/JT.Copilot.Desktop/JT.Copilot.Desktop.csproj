@@ -21,7 +21,7 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>JT.Copilot</AssemblyName>
     <Product>JT Copilot</Product>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
   </PropertyGroup>
 
 </Project>

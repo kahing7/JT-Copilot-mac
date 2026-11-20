@@ -9,13 +9,19 @@ public interface IVoiceCaptureCoordinator : IDisposable
 
     event EventHandler<AudioLevelChangedEventArgs>? LevelChanged;
 
+    event EventHandler<WritingSessionUpdateEventArgs>? WritingSessionChanged;
+
     VoiceCaptureSnapshot Current { get; }
+
+    WritingSessionUpdate CurrentWritingSession { get; }
 
     Task InitializeAsync(CancellationToken cancellationToken = default);
 
     Task StartAsync(CancellationToken cancellationToken = default);
 
     Task StopAsync(CancellationToken cancellationToken = default);
+
+    Task FinishAsync(CancellationToken cancellationToken = default);
 
     Task CancelAsync(CancellationToken cancellationToken = default);
 

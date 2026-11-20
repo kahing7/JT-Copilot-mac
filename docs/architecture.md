@@ -1,99 +1,108 @@
 # Architecture
 
-## Goals
+## Overview
 
-The first phase establishes a maintainable Windows desktop foundation without
-pretending that future ASR, LLM, or text-writing capabilities are complete.
-
-The design follows a modular monolith:
+JT Copilot is a local-first Windows desktop application built as a modular
+monolith:
 
 ```text
-Desktop (WPF, MVVM, window lifecycle)
-    -> Infrastructure (Windows, audio, storage adapters)
-    -> Application (orchestration and abstractions)
+Desktop (WPF, MVVM, windows)
+    -> Infrastructure (audio, Windows automation, Zhipu clients, storage)
+    -> Application (session coordination and provider abstractions)
     -> Domain (state and value objects)
 ```
 
-`Contracts` remains independent and is reserved for structured cross-boundary DTOs
-that appear in later phases.
+`Contracts` remains reserved for structured cross-module DTOs.
 
-## Project Boundaries
-
-| Project | Responsibility |
-| --- | --- |
-| `JT.Copilot.Domain` | Capture state, placement value object |
-| `JT.Copilot.Contracts` | Future structured provider contracts |
-| `JT.Copilot.Application` | Coordinator, settings model, provider interfaces |
-| `JT.Copilot.Infrastructure` | NAudio capture, global keyboard hook, JSON storage |
-| `JT.Copilot.Desktop` | WPF windows, resources, ViewModels, process lifecycle |
-
-Dependencies point inward. Domain and Application do not reference WPF or Windows
-specific adapters.
-
-## Voice Capture State
-
-Phase 1 uses a single capture state machine:
+## Session State
 
 ```text
-Idle -> Recording -> Captured
+Idle -> Recording -> Processing -> Completed
   ^         |            |
   |         +-> Faulted  |
   +--------- Cancel <----+
 ```
 
-The AI analysis channel will use a separate state machine in a later phase. It
-must not be merged with recording or writing state, because those channels run
-concurrently.
+The user starts recording with the global shortcut and finishes with `Esc`.
+Recording and guidance run concurrently; guidance never blocks text insertion.
 
-## Runtime Flow
+## Audio Segmentation
+
+NAudio captures 16 kHz, 16-bit, mono PCM. The coordinator buffers audio and
+creates a segment when:
+
+- speech has occurred and approximately 550 ms of silence follows; or
+- continuous speech reaches approximately 3.8 seconds.
+
+Each segment reuses the final 450 ms of the previous audio as overlap. Raw ASR
+segments are retained for final consolidation so live boundary errors can be
+corrected at session end.
+
+## Speech Recognition
+
+`ZhipuSpeechRecognitionProvider` sends each segment to:
 
 ```text
-Low-level keyboard hook
-    -> VoiceCaptureCoordinator
-    -> IAudioCaptureService
-    -> NAudio WaveIn
-    -> WAV file
-    -> UI state and level events
+POST https://open.bigmodel.cn/api/paas/v4/audio/transcriptions
+model=glm-asr-2512
+stream=true
 ```
 
-The low-level keyboard hook is installed on the WPF UI thread. Audio callbacks
-arrive on NAudio worker threads and are marshalled to the UI dispatcher before
-ViewModel updates.
+The API is file-oriented and returns SSE events. The provider reads the final
+`transcript.text.done` event. This produces approximate rather than word-level
+real-time recognition.
 
-## Window Behavior
+## Incremental Writing
 
-The floating widget:
+At session start, `WindowsTextInsertionService` captures:
 
-- is a frameless layered WPF window;
-- uses fixed expanded and collapsed dimensions;
-- is excluded from the taskbar and Alt+Tab;
-- uses `WS_EX_NOACTIVATE` to avoid taking focus from the active work application;
-- persists its position under `%LOCALAPPDATA%\JT Copilot\settings.json`;
-- falls back to the lower-right work area if the saved position is off-screen.
+- foreground window handle;
+- target process;
+- focused UI Automation element;
+- UI Automation TextPattern range at the insertion point.
 
-The settings window is a normal keyboard-accessible dialog while the floating
-widget remains intentionally non-activating.
+Stable text is pasted through the clipboard after focus revalidation. Clipboard
+content is backed up and restored. If focus changes, no text is sent.
 
-## Data And Privacy
+## Guidance Channel
 
-Phase 1 stores only UI settings and local WAV recordings. No content leaves the
-machine. API keys are not implemented or persisted yet. Future cloud providers
-must use Credential Manager or DPAPI and must not log request bodies or secrets.
+After each stable segment, `ZhipuWritingModelProvider` calls
+`glm-4.5-air` with thinking disabled. It returns structured JSON containing:
 
-## Error Handling
+- framework;
+- next sentence;
+- next directions;
+- missing points.
 
-- Missing microphone: capture enters `Faulted`; the UI retains an actionable error.
-- Hook installation failure: the application remains open with an error state.
-- Invalid settings JSON: defaults are used and a warning is logged.
-- Settings save failure: the UI remains usable and the error is logged.
-- Settings window failure: the floating widget stays alive and reports the error.
+Requests are debounced and previous analyses are cancelled. The non-activating
+guidance window updates without taking focus.
 
-## Next Architectural Boundary
+## Final Consolidation
 
-Phase 2 adds:
+Pressing `Esc`:
 
-- `ISpeechRecognitionProvider`;
-- foreground window and focus snapshot;
-- `ITextInsertionProvider`;
-- target revalidation before any paste or input;
-- clipboard preservation and explicit fallback behavior.
+1. stops capture and flushes the final segment;
+2. waits for all queued ASR segments;
+3. sends all raw segment texts to `glm-4.6` for overlap removal, deduplication,
+   typo correction, grammar, and punctuation repair;
+4. locates the exact text range written during this session;
+5. verifies the current text still matches the session transcript;
+6. replaces the selected range in one paste/undo unit.
+
+If focus or range validation fails, the optimized text is kept in the side panel
+for copy or manual replacement.
+
+## Security And Privacy
+
+- The API key is stored as DPAPI-protected bytes under `%LOCALAPPDATA%`.
+- Keys are never written to source, settings JSON, documentation, or logs.
+- Artifact names and truncated transcripts may be logged; full sensitive document
+  contents must not be logged.
+- Recording and transcription are active only during an explicit session.
+
+## Remaining Architectural Risks
+
+- Feishu document compatibility must be validated with a live document.
+- Some editors expose neither reliable UIA TextPattern ranges nor stable focus.
+- Segment boundaries may still introduce errors on highly technical vocabulary.
+- The final replacement depends on the session text remaining unchanged.

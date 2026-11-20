@@ -12,6 +12,8 @@ public interface IGlobalHotkeyService : IDisposable
 
     bool IsRunning { get; }
 
+    bool CaptureEscape { get; set; }
+
     HotkeyGesture Gesture { get; }
 
     void Start(HotkeyGesture gesture);

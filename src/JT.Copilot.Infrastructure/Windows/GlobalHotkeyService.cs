@@ -41,6 +41,8 @@ public sealed class GlobalHotkeyService : IGlobalHotkeyService
 
     public bool IsRunning => _hookHandle != nint.Zero;
 
+    public bool CaptureEscape { get; set; }
+
     public HotkeyGesture Gesture => _gesture;
 
     public void Start(HotkeyGesture gesture)
@@ -140,7 +142,7 @@ public sealed class GlobalHotkeyService : IGlobalHotkeyService
                 _pressedKeys.Remove(virtualKey);
             }
 
-            if (virtualKey == VkEscape && _triggerDown
+            if (virtualKey == VkEscape && CaptureEscape
                 && message is WmKeyDown or WmSysKeyDown)
             {
                 _triggerDown = false;

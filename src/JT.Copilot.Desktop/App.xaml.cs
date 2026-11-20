@@ -45,6 +45,7 @@ public partial class App : System.Windows.Application
             builder.Services.AddSingleton<MainWindowViewModel>();
             builder.Services.AddSingleton<MainWindow>();
             builder.Services.AddTransient<SettingsWindow>();
+            builder.Services.AddTransient<GuidanceWindow>();
 
             _host = builder.Build();
             await _host.StartAsync();

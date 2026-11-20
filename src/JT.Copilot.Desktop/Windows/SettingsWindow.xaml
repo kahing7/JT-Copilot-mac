@@ -10,7 +10,8 @@
         Background="Transparent"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterScreen"
-        SourceInitialized="SettingsWindow_OnSourceInitialized">
+        SourceInitialized="SettingsWindow_OnSourceInitialized"
+        Loaded="SettingsWindow_OnLoaded">
     <Border Background="{StaticResource PanelSolidBrush}"
             BorderBrush="{StaticResource BorderBrush}"
             BorderThickness="1"
@@ -139,6 +140,37 @@
                             </TextBlock.Style>
                         </TextBlock>
                     </Grid>
+
+                    <Rectangle Height="1"
+                               Margin="0,18,0,16"
+                               Fill="{StaticResource BorderBrush}" />
+
+                    <TextBlock Style="{StaticResource SectionLabelStyle}" Text="智谱 API" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="92" />
+                        </Grid.ColumnDefinitions>
+                        <PasswordBox x:Name="ZhipuApiKeyBox"
+                                     Height="36"
+                                     Margin="0,0,8,0"
+                                     Padding="10,0"
+                                     VerticalContentAlignment="Center"
+                                     Background="{StaticResource PanelRaisedBrush}"
+                                     Foreground="{StaticResource TextPrimaryBrush}"
+                                     BorderBrush="{StaticResource BorderBrush}"
+                                     AutomationProperties.Name="智谱 API Key" />
+                        <Button Grid.Column="1"
+                                Height="36"
+                                MinWidth="0"
+                                Style="{StaticResource CommandButtonStyle}"
+                                Click="SaveApiKeyButton_OnClick"
+                                Content="保存 Key" />
+                    </Grid>
+                    <TextBlock x:Name="ApiKeyStatusText"
+                               Margin="2,6,0,0"
+                               FontSize="11"
+                               Foreground="{StaticResource TextSecondaryBrush}" />
 
                     <Rectangle Height="1"
                                Margin="0,18,0,16"

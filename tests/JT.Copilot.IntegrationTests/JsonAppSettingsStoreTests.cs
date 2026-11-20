@@ -1,3 +1,4 @@
+using System.IO;
 using JT.Copilot.Application.Models;
 using JT.Copilot.Infrastructure.Storage;
 

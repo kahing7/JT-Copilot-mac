@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
+using System.IO;
 using JT.Copilot.Application.Abstractions;
 using JT.Copilot.Application.Models;
 using JT.Copilot.Infrastructure.Storage;
@@ -26,6 +27,8 @@ public sealed class WaveAudioCaptureService : IAudioCaptureService
     }
 
     public event EventHandler<AudioLevelChangedEventArgs>? LevelChanged;
+
+    public event EventHandler<PcmAudioDataEventArgs>? PcmDataAvailable;
 
     public bool IsCapturing => _waveIn is not null && _writer is not null;
 
@@ -181,6 +184,11 @@ public sealed class WaveAudioCaptureService : IAudioCaptureService
         // Speech is usually low amplitude before gain is applied by ASR providers.
         var level = Math.Clamp(peak / 32768d * 4d, 0d, 1d);
         LevelChanged?.Invoke(this, new AudioLevelChangedEventArgs(level));
+        PcmDataAvailable?.Invoke(
+            this,
+            new PcmAudioDataEventArgs(
+                eventArgs.Buffer.AsMemory(0, eventArgs.BytesRecorded).ToArray(),
+                level));
     }
 
     private void OnRecordingStopped(object? sender, StoppedEventArgs eventArgs)
@@ -212,7 +220,7 @@ public sealed class WaveAudioCaptureService : IAudioCaptureService
             return;
         }
 
-        _stopCompletion?.TrySetResult(new AudioCaptureResult(filePath, duration));
+        _stopCompletion?.TrySetResult(new AudioCaptureResult(filePath!, duration));
     }
 
     private void DisposeCaptureResources()

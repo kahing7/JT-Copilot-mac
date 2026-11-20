@@ -24,6 +24,7 @@ public partial class MainWindow : Window
     private readonly MainWindowViewModel _viewModel;
     private readonly ILogger<MainWindow> _logger;
     private readonly DispatcherTimer _placementSaveTimer;
+    private GuidanceWindow? _guidanceWindow;
     private bool _isInitialized;
     private bool _isClosing;
 
@@ -93,6 +94,7 @@ public partial class MainWindow : Window
         _viewModel.CloseRequested -= OnCloseRequested;
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         LocationChanged -= OnLocationChanged;
+        _guidanceWindow?.Close();
 
         if (_isInitialized)
         {
@@ -124,13 +126,65 @@ public partial class MainWindow : Window
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName != nameof(MainWindowViewModel.IsExpanded))
+        if (e.PropertyName == nameof(MainWindowViewModel.IsExpanded))
+        {
+            Width = _viewModel.WindowWidth;
+            Height = _viewModel.WindowHeight;
+        }
+
+        if (e.PropertyName == nameof(MainWindowViewModel.IsGuidanceVisible))
+        {
+            UpdateGuidanceWindowVisibility();
+        }
+    }
+
+    private void UpdateGuidanceWindowVisibility()
+    {
+        if (_viewModel.IsGuidanceVisible)
+        {
+            if (_guidanceWindow is not null)
+            {
+                return;
+            }
+
+            _guidanceWindow = _serviceProvider.GetRequiredService<GuidanceWindow>();
+            _guidanceWindow.DataContext = _viewModel;
+            _guidanceWindow.Closed += (_, _) => _guidanceWindow = null;
+            _guidanceWindow.Show();
+            PositionGuidanceWindow();
+            return;
+        }
+
+        _guidanceWindow?.Close();
+        _guidanceWindow = null;
+    }
+
+    private void PositionGuidanceWindow()
+    {
+        if (_guidanceWindow is null)
         {
             return;
         }
 
-        Width = _viewModel.WindowWidth;
-        Height = _viewModel.WindowHeight;
+        var right = Left + Width + 12;
+        if (right + _guidanceWindow.Width <= SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth)
+        {
+            _guidanceWindow.Left = right;
+        }
+        else
+        {
+            _guidanceWindow.Left = Math.Max(
+                SystemParameters.VirtualScreenLeft,
+                Left - _guidanceWindow.Width - 12);
+        }
+
+        _guidanceWindow.Top = Math.Max(
+            SystemParameters.VirtualScreenTop,
+            Math.Min(
+                Top,
+                SystemParameters.VirtualScreenTop
+                + SystemParameters.VirtualScreenHeight
+                - _guidanceWindow.Height));
     }
 
     private async void OnPlacementSaveTimerTick(object? sender, EventArgs e)

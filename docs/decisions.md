@@ -61,3 +61,41 @@
   old read-only default was not adaptable.
 - Tradeoff: A multi-key global chord is swallowed while the app is running. The
   settings window provides validation and a one-click default restore.
+
+## ADR-008: Use Segmented Near-Real-Time ASR
+
+- Status: Accepted
+- Date: 2026-11-21
+- Decision: Capture continuous PCM, split on silence or 3.8 seconds, and submit
+  overlapping segments to `glm-asr-2512`.
+- Reason: Zhipu's documented ASR endpoint accepts audio files and streams the
+  result, not a continuous microphone WebSocket in a form validated for this
+  product.
+- Tradeoff: Text appears every few seconds rather than word by word. Final raw
+  segments are consolidated to repair boundary errors.
+
+## ADR-009: Store The API Key With DPAPI
+
+- Status: Accepted
+- Date: 2026-11-21
+- Decision: Encrypt the Zhipu key with current-user DPAPI and store it under the
+  application's local secrets directory.
+- Reason: The key must not appear in source, JSON settings, logs, or Git.
+
+## ADR-010: Use UIA Ranges For Final Replacement
+
+- Status: Accepted
+- Date: 2026-11-21
+- Decision: Capture the insertion range at session start, validate it at session
+  end, and replace only the text written during the session.
+- Reason: Replacing the entire document would be destructive. Automatic
+  replacement is skipped when the range cannot be verified.
+
+## ADR-011: Split Fast Guidance And High-Quality Editing Models
+
+- Status: Accepted
+- Date: 2026-11-21
+- Decision: Use `glm-4.5-air` with thinking disabled for live guidance and
+  `glm-4.6` for final consolidation.
+- Reason: Live suggestions need low latency, while final editing needs stronger
+  duplicate removal and grammar correction.

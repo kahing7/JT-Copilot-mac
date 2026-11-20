@@ -9,19 +9,17 @@ namespace JT.Copilot.UnitTests;
 public sealed class VoiceCaptureCoordinatorTests
 {
     [Fact]
-    public async Task StartAndStop_CapturesRecordingAndPublishesSavedState()
+    public async Task StartAndFinish_CompletesSessionWithoutLosingRecording()
     {
         var audio = new FakeAudioCaptureService();
         var hotkey = new FakeGlobalHotkeyService();
-        using var coordinator = new VoiceCaptureCoordinator(audio, hotkey, new FakeSettingsStore());
+        using var coordinator = CreateCoordinator(audio, hotkey);
 
         await coordinator.InitializeAsync();
         await coordinator.StartAsync();
-        await coordinator.StopAsync();
+        await coordinator.FinishAsync();
 
-        Assert.Equal(VoiceCaptureState.Captured, coordinator.Current.State);
-        Assert.Equal(TimeSpan.FromSeconds(2), coordinator.Current.Elapsed);
-        Assert.Equal("recording.wav", coordinator.Current.RecordingPath);
+        Assert.Equal(VoiceCaptureState.Completed, coordinator.Current.State);
         Assert.Equal(1, audio.StartCount);
         Assert.Equal(1, audio.StopCount);
     }
@@ -33,10 +31,7 @@ public sealed class VoiceCaptureCoordinatorTests
         {
             StartException = new InvalidOperationException("microphone unavailable")
         };
-        using var coordinator = new VoiceCaptureCoordinator(
-            audio,
-            new FakeGlobalHotkeyService(),
-            new FakeSettingsStore());
+        using var coordinator = CreateCoordinator(audio, new FakeGlobalHotkeyService());
 
         await coordinator.InitializeAsync();
         await coordinator.StartAsync();
@@ -49,10 +44,7 @@ public sealed class VoiceCaptureCoordinatorTests
     public async Task Cancel_ReturnsToIdleAndCancelsAudio()
     {
         var audio = new FakeAudioCaptureService();
-        using var coordinator = new VoiceCaptureCoordinator(
-            audio,
-            new FakeGlobalHotkeyService(),
-            new FakeSettingsStore());
+        using var coordinator = CreateCoordinator(audio, new FakeGlobalHotkeyService());
 
         await coordinator.InitializeAsync();
         await coordinator.StartAsync();
@@ -60,6 +52,19 @@ public sealed class VoiceCaptureCoordinatorTests
 
         Assert.Equal(VoiceCaptureState.Idle, coordinator.Current.State);
         Assert.Equal(1, audio.CancelCount);
+    }
+
+    private static VoiceCaptureCoordinator CreateCoordinator(
+        FakeAudioCaptureService audio,
+        FakeGlobalHotkeyService hotkey)
+    {
+        return new VoiceCaptureCoordinator(
+            audio,
+            hotkey,
+            new FakeSettingsStore(),
+            new FakeSpeechRecognitionProvider(),
+            new FakeWritingModelProvider(),
+            new FakeTextInsertionService());
     }
 
     private sealed class FakeSettingsStore : IAppSettingsStore
@@ -84,6 +89,8 @@ public sealed class VoiceCaptureCoordinatorTests
         public event EventHandler? CancelRequested;
 
         public bool IsRunning { get; private set; }
+
+        public bool CaptureEscape { get; set; }
 
         public HotkeyGesture Gesture { get; private set; } = HotkeyGesture.Default;
 
@@ -119,6 +126,12 @@ public sealed class VoiceCaptureCoordinatorTests
     private sealed class FakeAudioCaptureService : IAudioCaptureService
     {
         public event EventHandler<AudioLevelChangedEventArgs>? LevelChanged
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<PcmAudioDataEventArgs>? PcmDataAvailable
         {
             add { }
             remove { }
@@ -167,6 +180,79 @@ public sealed class VoiceCaptureCoordinatorTests
         public void Dispose()
         {
             IsCapturing = false;
+        }
+    }
+
+    private sealed class FakeSpeechRecognitionProvider : ISpeechRecognitionProvider
+    {
+        public Task<string> TranscribeAsync(
+            ReadOnlyMemory<byte> wavAudio,
+            string transcriptContext,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(string.Empty);
+        }
+    }
+
+    private sealed class FakeWritingModelProvider : IWritingModelProvider
+    {
+        public Task<WritingGuidance> AnalyzeAsync(
+            string transcript,
+            WritingGuidance? previousGuidance,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(WritingGuidance.Empty);
+        }
+
+        public Task<string> OptimizeAsync(
+            string transcript,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(transcript);
+        }
+
+        public Task<string> OptimizeSegmentsAsync(
+            IReadOnlyList<string> transcriptSegments,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(string.Join(string.Empty, transcriptSegments));
+        }
+    }
+
+    private sealed class FakeTextInsertionService : ITextInsertionService
+    {
+        public Task<ITextInsertionTarget?> CaptureTargetAsync(
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<ITextInsertionTarget?>(new FakeTextInsertionTarget());
+        }
+
+        public Task<TextInsertionResult> InsertAsync(
+            string text,
+            ITextInsertionTarget target,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(TextInsertionResult.Succeeded);
+        }
+
+        public Task<TextReplacementResult> ReplaceSessionTextAsync(
+            string expectedText,
+            string replacementText,
+            ITextInsertionTarget target,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(TextReplacementResult.Succeeded);
+        }
+    }
+
+    private sealed class FakeTextInsertionTarget : ITextInsertionTarget
+    {
+        public bool IsActive => true;
+
+        public string DisplayName => "Fake editor";
+
+        public void Dispose()
+        {
         }
     }
 }

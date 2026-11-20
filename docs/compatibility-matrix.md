@@ -7,39 +7,36 @@
 | Windows 11 Pro x64 | Verified | Build `10.0.26300` |
 | .NET SDK 10.0.402 | Verified | `dotnet --info` |
 | Windows Desktop Runtime 10.0.13 | Verified | `dotnet --list-runtimes` |
-| WPF template | Verified | `dotnet new list wpf` |
-| Git | Verified | Installed at `C:\Program Files\Git\cmd\git.exe` |
-| NuGet | Verified | `api.nuget.org` returned HTTP 200 |
+| WPF and UI Automation | Verified | Build and Notepad UIA tests |
+| Zhipu API key | Verified | ASR and GLM requests returned HTTP 200 |
 
-## Audio Devices
+## Editor Compatibility
 
-The verification machine exposed two capture endpoints:
+| Target | Focus | Incremental Insert | Final Replace | Status |
+| --- | --- | --- | --- | --- |
+| Windows Notepad (`RichEditD2DPT`) | Verified | Verified | Verified | Supported |
+| Feishu 8.6.13 | Installed, live doc not mutated | Database only | Not verified | Must be tested with a disposable document |
+| Microsoft Word | Installed | Not verified | Not verified | Pending |
+| Chrome / Edge | Installed | Not verified | Not verified | Pending |
+| VS Code | Installed | Not verified | Not verified | Pending |
+| WeChat | Installed | Not verified | Not verified | Pending |
 
-- Microphone Array (Intel Smart Sound Technology)
-- Microphone (Realtek Audio)
+## Verified Workflow
 
-The Realtek/Intel capture path produced a valid WAV in the Phase 1 validation
-test. Device-specific ASR quality is not evaluated yet.
+The full application coordinator was driven with a generated 14-second Chinese
+speech sample:
 
-## Target Applications
+- multiple overlapping ASR segments were recognized;
+- stable text was inserted while Notepad retained existing text;
+- guidance contained framework, directions, and next sentence;
+- `Esc` triggered full consolidation and range replacement;
+- final Notepad text preserved the original prefix and replaced only the session
+  transcript.
 
-The following applications are installed by the environment check:
+## Known Limitations
 
-- Feishu 8.6.13
-- Microsoft Office 2016-style installation
-- WPS Office
-- Chrome
-- Edge
-- WeChat
-- VS Code
-- Windows Notepad
-
-Phase 1 does not insert text, so application compatibility is not claimed. Phase 2
-must validate focus and insertion behavior separately for every required target.
-
-## Known Platform Limitations
-
-- The current widget is Windows-only.
-- Windows 10 and ARM64 are not part of the accepted Phase 1 matrix.
+- ASR is segment-based near-real-time, not per-word.
+- Feishu document replacement still requires manual compatibility validation
+  because no disposable Feishu document was created during automated testing.
 - Elevated target applications remain subject to Windows UIPI restrictions.
-- The user account does not run as administrator.
+- Heavy custom editors may lack reliable UI Automation TextPattern ranges.
