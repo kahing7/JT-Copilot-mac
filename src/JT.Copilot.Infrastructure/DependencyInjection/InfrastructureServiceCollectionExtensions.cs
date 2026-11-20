@@ -1,6 +1,8 @@
 using System.Net.Http;
 using JT.Copilot.Application.Abstractions;
+using JT.Copilot.Application.Guidance;
 using JT.Copilot.Application.Services;
+using JT.Copilot.Application.Text;
 using JT.Copilot.Infrastructure.Audio;
 using JT.Copilot.Infrastructure.Security;
 using JT.Copilot.Infrastructure.Storage;
@@ -27,6 +29,8 @@ public static class InfrastructureServiceCollectionExtensions
             new ZhipuApiKeyStore(
                 AppPaths.ZhipuApiKeyFilePath,
                 provider.GetRequiredService<ILogger<ZhipuApiKeyStore>>()));
+        services.AddSingleton<DomainTermCorrector>();
+        services.AddSingleton<IDocumentFrameworkEngine, LocalDocumentFrameworkEngine>();
         services.AddSingleton<ISpeechRecognitionProvider, ZhipuSpeechRecognitionProvider>();
         services.AddSingleton<IWritingModelProvider, ZhipuWritingModelProvider>();
         services.AddSingleton<VoskModelProvisioner>();

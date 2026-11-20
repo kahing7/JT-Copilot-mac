@@ -12,13 +12,17 @@ The core workflow is implemented:
 
 1. Press `Ctrl + Shift + J + T` to start.
 2. Local Vosk recognition emits character/word-level partial hypotheses.
-3. Partial text is inserted immediately and revised with minimal backspace diffs.
-4. The side panel updates framework, next-sentence guidance, directions, and
-   missing points.
-5. `Esc` stops capture.
-6. Zhipu `GLM-ASR-2512` reconciles stable audio segments.
-7. Zhipu `GLM-4.6` consolidates, deduplicates, and corrects the full session text.
-8. The corrected text replaces the session transcript.
+3. Business terms and English abbreviations are corrected locally before text is
+   inserted.
+4. Partial text is inserted immediately and revised with minimal backspace diffs.
+5. A local document-template engine advances the next-sentence guidance instantly.
+6. Zhipu only supplements directions and missing points; it cannot overwrite the
+   local next sentence.
+7. `Esc` stops capture.
+8. Zhipu `GLM-ASR-2512` reconciles stable audio segments with vocabulary hints.
+9. Zhipu `GLM-4.6` consolidates, deduplicates, and corrects the full session text.
+10. Domain corrections are applied again before the optimized text replaces the
+    live transcript.
 
 Implemented:
 
@@ -27,6 +31,14 @@ Implemented:
 - Local Vosk Chinese streaming ASR with automatic first-use model download.
 - 16 kHz mono microphone capture and local VAD segmentation.
 - Unicode live typing with minimal backspace corrections.
+- Local correction for `CRM`, `积分兑礼`, `OK`, common English abbreviations, and
+  user-defined aliases.
+- Editable business vocabulary in Settings using `standard=alias1,alias2`.
+- Local template guidance for project-management documents, PRDs, weekly
+  reports, solution documents, and auto-detection.
+- The project-management prompt sequence advances through background, goals,
+  scope, milestones, ownership, risks, and acceptance criteria without waiting
+  for a network response.
 - Zhipu ASR segment reconciliation and final full-text optimization.
 - Acrylic `72 x 72` floating orb with adjustable opacity.
 - Acrylic guidance panel with adjustable opacity.
@@ -40,7 +52,9 @@ Current limitations:
   guarantee of one fixed codepoint per time interval.
 - Notepad insertion and final replacement are verified end to end.
 - Feishu still requires a disposable live-document compatibility test.
-- Vosk accuracy is lower than Zhipu; the final Zhipu pass performs correction.
+- Vosk can still misrecognize arbitrary names. Add recurring terms to the
+  business vocabulary; the built-in `OK` correction is deliberately limited to
+  business-term context to avoid changing legitimate Chinese questions.
 - Task history still does not use SQLite.
 
 ## Requirements
@@ -93,7 +107,7 @@ dotnet publish src/JT.Copilot.Desktop/JT.Copilot.Desktop.csproj `
   --self-contained true `
   -p:PublishSingleFile=true `
   -p:IncludeNativeLibrariesForSelfExtract=true `
-  -o artifacts/publish/v0.3
+  -o artifacts/publish/v0.4
 ```
 
 ## Documentation
@@ -105,3 +119,4 @@ dotnet publish src/JT.Copilot.Desktop/JT.Copilot.Desktop.csproj `
 - [Phase 1 validation](docs/phase1-validation.md)
 - [Phase 2 validation](docs/phase2-validation.md)
 - [Phase 3 validation](docs/phase3-validation.md)
+- [Phase 4 validation](docs/phase4-validation.md)

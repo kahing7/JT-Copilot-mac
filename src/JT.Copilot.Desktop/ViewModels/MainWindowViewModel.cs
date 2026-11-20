@@ -54,6 +54,12 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private double guidanceOpacityPercent = 68;
 
     [ObservableProperty]
+    private DocumentTemplateOption? selectedDocumentTemplate;
+
+    [ObservableProperty]
+    private string detectedTemplateLabel = "自动识别";
+
+    [ObservableProperty]
     private string statusTitle = "准备就绪";
 
     [ObservableProperty]
@@ -79,6 +85,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private string hotkeyError = string.Empty;
+
+    [ObservableProperty]
+    private string customVocabulary = string.Empty;
 
     [ObservableProperty]
     private string lastRecordingPath = string.Empty;
@@ -126,6 +135,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<string> MissingPointItems { get; } = [];
 
+    public IReadOnlyList<DocumentTemplateOption> DocumentTemplateOptions { get; } =
+        DocumentTemplateCatalog.All;
+
     public AppSettings Settings => _settings;
 
     public string RecordingsDirectory => AppPaths.RecordingsDirectory;
@@ -148,10 +160,14 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             _settings = await _settingsStore.LoadAsync(cancellationToken);
             HotkeyText = FormatHotkey(_settings.Hotkey);
+            CustomVocabulary = _settings.CustomVocabulary;
             IsTopmost = _settings.IsTopmost;
             IsExpanded = _settings.IsExpanded;
             OrbOpacityPercent = _settings.OrbOpacityPercent;
             GuidanceOpacityPercent = _settings.GuidanceOpacityPercent;
+            SelectedDocumentTemplate = DocumentTemplateOptions.FirstOrDefault(
+                option => option.Value == _settings.GuidanceTemplate)
+                ?? DocumentTemplateOptions[0];
 
             AudioDevices.Clear();
             foreach (var device in _audioCaptureService.GetInputDevices())
@@ -420,6 +436,18 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _ = PersistSettingsAsync();
     }
 
+    partial void OnCustomVocabularyChanged(string value)
+    {
+        _voiceCaptureCoordinator.UpdateCustomVocabulary(value);
+        if (_isInitializing)
+        {
+            return;
+        }
+
+        _settings = (_settings with { CustomVocabulary = value }).Normalize();
+        _ = PersistSettingsAsync();
+    }
+
     partial void OnOrbOpacityPercentChanged(double value)
     {
         OnPropertyChanged(nameof(OrbOpacityScale));
@@ -441,6 +469,27 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         _settings = (_settings with { GuidanceOpacityPercent = value }).Normalize();
+        _ = PersistSettingsAsync();
+    }
+
+    partial void OnSelectedDocumentTemplateChanged(DocumentTemplateOption? value)
+    {
+        if (value is null)
+        {
+            return;
+        }
+
+        _voiceCaptureCoordinator.UpdateDocumentTemplate(value.Value);
+        DetectedTemplateLabel = value.DisplayName;
+        if (_isInitializing)
+        {
+            return;
+        }
+
+        _settings = (_settings with
+        {
+            GuidanceTemplate = value.Value
+        }).Normalize();
         _ = PersistSettingsAsync();
     }
 
@@ -484,6 +533,10 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         LiveTranscript = update.StableTranscript;
         SessionStatus = update.StatusText;
         NextSentence = update.Guidance.NextSentence;
+        DetectedTemplateLabel = update.Guidance.Template == DocumentTemplate.Auto
+            && SelectedDocumentTemplate is not null
+                ? SelectedDocumentTemplate.DisplayName
+                : DocumentTemplateCatalog.GetDisplayName(update.Guidance.Template);
         OptimizedTranscript = update.OptimizedTranscript;
         ReplacementMessage = update.ReplacementMessage;
 

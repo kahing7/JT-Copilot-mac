@@ -3,6 +3,7 @@ using System.Text;
 using JT.Copilot.Application.Abstractions;
 using JT.Copilot.Application.Hotkeys;
 using JT.Copilot.Application.Models;
+using JT.Copilot.Application.Text;
 using JT.Copilot.Domain.Enums;
 
 namespace JT.Copilot.Application.Services;
@@ -24,6 +25,8 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
     private readonly ISpeechRecognitionProvider _speechRecognitionProvider;
     private readonly IStreamingSpeechRecognitionProvider _streamingSpeechRecognitionProvider;
     private readonly IWritingModelProvider _writingModelProvider;
+    private readonly IDocumentFrameworkEngine _documentFrameworkEngine;
+    private readonly DomainTermCorrector _domainTermCorrector;
     private readonly ITextInsertionService _textInsertionService;
     private readonly SemaphoreSlim _stateGate = new(1, 1);
     private readonly object _timerLock = new();
@@ -54,6 +57,11 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
     private string _statusMessage = string.Empty;
     private string _liveCommittedText = string.Empty;
     private string _liveSessionText = string.Empty;
+    private string _customVocabulary = string.Empty;
+    private string _supplementalGuidanceKey = string.Empty;
+    private IReadOnlyList<string> _supplementalDirections = [];
+    private IReadOnlyList<string> _supplementalMissingPoints = [];
+    private DocumentTemplate _documentTemplate = DocumentTemplate.Auto;
     private bool _hasSpeech;
     private bool _liveRecognitionAvailable;
     private bool _liveWorkerRunning;
@@ -68,6 +76,8 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
         ISpeechRecognitionProvider speechRecognitionProvider,
         IStreamingSpeechRecognitionProvider streamingSpeechRecognitionProvider,
         IWritingModelProvider writingModelProvider,
+        IDocumentFrameworkEngine documentFrameworkEngine,
+        DomainTermCorrector domainTermCorrector,
         ITextInsertionService textInsertionService)
     {
         _audioCaptureService = audioCaptureService;
@@ -76,6 +86,8 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
         _speechRecognitionProvider = speechRecognitionProvider;
         _streamingSpeechRecognitionProvider = streamingSpeechRecognitionProvider;
         _writingModelProvider = writingModelProvider;
+        _documentFrameworkEngine = documentFrameworkEngine;
+        _domainTermCorrector = domainTermCorrector;
         _textInsertionService = textInsertionService;
 
         _globalHotkeyService.Pressed += OnHotkeyPressed;
@@ -115,6 +127,8 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
             // Low-level keyboard hooks must be installed on the UI thread so the
             // WPF dispatcher can deliver hook callbacks.
             var settings = await _settingsStore.LoadAsync(cancellationToken);
+            _customVocabulary = settings.CustomVocabulary;
+            _documentTemplate = settings.GuidanceTemplate;
             _globalHotkeyService.Start(HotkeyGesture.ParseOrDefault(settings.Hotkey));
             _streamingInitializationTask ??= _streamingSpeechRecognitionProvider.InitializeAsync();
             _initialized = true;
@@ -183,6 +197,7 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
             PublishState(new VoiceCaptureSnapshot(
                 VoiceCaptureState.Recording,
                 TimeSpan.Zero));
+            RefreshLocalGuidance(string.Empty, _sessionGeneration);
         }
         catch (Exception exception)
         {
@@ -301,6 +316,27 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
         }
 
         _globalHotkeyService.Reconfigure(gesture);
+    }
+
+    public void UpdateDocumentTemplate(DocumentTemplate template)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!Enum.IsDefined(template) || template == DocumentTemplate.General)
+        {
+            template = DocumentTemplate.Auto;
+        }
+
+        _documentTemplate = template;
+        if (Current.State is VoiceCaptureState.Recording or VoiceCaptureState.Processing)
+        {
+            RefreshLocalGuidance(GetDocumentTranscript(), _sessionGeneration);
+        }
+    }
+
+    public void UpdateCustomVocabulary(string customVocabulary)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _customVocabulary = customVocabulary?.Trim() ?? string.Empty;
     }
 
     public void Dispose()
@@ -443,9 +479,11 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
         try
         {
             var token = _sessionCancellation?.Token ?? CancellationToken.None;
-            var segmentText = await _speechRecognitionProvider
-                .TranscribeAsync(wavAudio, string.Empty, token)
-                .ConfigureAwait(false);
+            var segmentText = _domainTermCorrector.Correct(
+                await _speechRecognitionProvider
+                    .TranscribeAsync(wavAudio, BuildRecognitionPrompt(), token)
+                    .ConfigureAwait(false),
+                _customVocabulary).Trim();
 
             if (string.IsNullOrWhiteSpace(segmentText))
             {
@@ -454,12 +492,12 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
 
             lock (_transcriptLock)
             {
-                _segmentTexts.Add(segmentText.Trim());
+                _segmentTexts.Add(segmentText);
             }
 
             if (_liveRecognitionAvailable)
             {
-                QueueGuidanceUpdate(GetDocumentTranscript(), generation);
+                RefreshLocalGuidance(GetDocumentTranscript(), generation);
                 return;
             }
 
@@ -469,7 +507,7 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
                 return;
             }
 
-            _draftTranscript = segmentText.Trim();
+            _draftTranscript = segmentText;
             PublishSessionUpdate("已识别，正在写入...");
 
             var insertionResult = _insertionTarget is null
@@ -487,7 +525,7 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
                 PublishSessionUpdate("文字已写入，正在更新表达框架...");
             }
 
-            QueueGuidanceUpdate(GetStableTranscript(), generation);
+            RefreshLocalGuidance(GetStableTranscript(), generation);
         }
         catch (OperationCanceledException)
         {
@@ -498,37 +536,92 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
         }
     }
 
-    private void QueueGuidanceUpdate(string transcript, int generation)
+    private void RefreshLocalGuidance(string transcript, int generation)
     {
+        if (generation != _sessionGeneration)
+        {
+            return;
+        }
+
+        var result = _documentFrameworkEngine.Build(transcript, _documentTemplate);
+        var guidanceKey = string.Join(
+            "\u001F",
+            result.Template,
+            result.Guidance.NextSentence,
+            string.Join("\u001E", result.Guidance.Framework));
+        if (!string.Equals(guidanceKey, _supplementalGuidanceKey, StringComparison.Ordinal))
+        {
+            _supplementalGuidanceKey = guidanceKey;
+            _supplementalDirections = [];
+            _supplementalMissingPoints = [];
+        }
+
+        _guidance = result.Guidance with
+        {
+            Directions = MergeItems(result.Guidance.Directions, _supplementalDirections, 6),
+            MissingPoints = MergeItems(result.Guidance.MissingPoints, _supplementalMissingPoints, 4)
+        };
+
+        PublishSessionUpdate(Current.State == VoiceCaptureState.Recording
+            ? "正在聆听 · 下一步已同步"
+            : "正在整理全文 · 框架已同步");
+        QueueSupplementalGuidance(transcript, generation, result.Guidance, guidanceKey);
+    }
+
+    private void QueueSupplementalGuidance(
+        string transcript,
+        int generation,
+        WritingGuidance localGuidance,
+        string guidanceKey)
+    {
+        if (string.IsNullOrWhiteSpace(transcript))
+        {
+            return;
+        }
+
         var cancellation = new CancellationTokenSource();
         var previous = Interlocked.Exchange(ref _analysisCancellation, cancellation);
         previous?.Cancel();
         previous?.Dispose();
 
-        _ = UpdateGuidanceAsync(transcript, generation, cancellation);
+        _ = UpdateSupplementalGuidanceAsync(
+            transcript,
+            generation,
+            localGuidance,
+            guidanceKey,
+            cancellation);
     }
 
-    private async Task UpdateGuidanceAsync(
+    private async Task UpdateSupplementalGuidanceAsync(
         string transcript,
         int generation,
+        WritingGuidance localGuidance,
+        string guidanceKey,
         CancellationTokenSource cancellation)
     {
         try
         {
-            await Task.Delay(260, cancellation.Token).ConfigureAwait(false);
-            var guidance = await _writingModelProvider
-                .AnalyzeAsync(transcript, _guidance, cancellation.Token)
+            await Task.Delay(320, cancellation.Token).ConfigureAwait(false);
+            var supplemental = await _writingModelProvider
+                .AnalyzeAsync(transcript, localGuidance, cancellation.Token)
                 .ConfigureAwait(false);
 
-            if (generation != _sessionGeneration)
+            if (generation != _sessionGeneration
+                || !string.Equals(guidanceKey, _supplementalGuidanceKey, StringComparison.Ordinal))
             {
                 return;
             }
 
-            _guidance = guidance;
+            _supplementalDirections = supplemental.Directions;
+            _supplementalMissingPoints = supplemental.MissingPoints;
+            _guidance = _guidance with
+            {
+                Directions = MergeItems(_guidance.Directions, _supplementalDirections, 6),
+                MissingPoints = MergeItems(_guidance.MissingPoints, _supplementalMissingPoints, 4)
+            };
             PublishSessionUpdate(Current.State == VoiceCaptureState.Recording
-                ? "正在聆听 · 框架已更新"
-                : "正在整理全文...");
+                ? "正在聆听 · 已补充写作方向"
+                : "正在整理全文 · 已补充检查项");
         }
         catch (OperationCanceledException)
         {
@@ -542,6 +635,28 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
             Interlocked.CompareExchange(ref _analysisCancellation, null, cancellation);
             cancellation.Dispose();
         }
+    }
+
+    private static IReadOnlyList<string> MergeItems(
+        IReadOnlyList<string> primary,
+        IReadOnlyList<string> supplemental,
+        int limit)
+    {
+        return primary
+            .Concat(supplemental)
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Select(item => item.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .Take(limit)
+            .ToArray();
+    }
+
+    private string BuildRecognitionPrompt()
+    {
+        var hotwords = _domainTermCorrector.GetHotwords(_customVocabulary);
+        return hotwords.Count == 0
+            ? string.Empty
+            : $"请准确识别以下业务术语并保留英文缩写：{string.Join("、", hotwords)}";
     }
 
     private async Task CompleteSessionAsync(CancellationToken cancellationToken)
@@ -570,7 +685,7 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
                 transcriptSegments = _segmentTexts.ToArray();
             }
 
-            _optimizedTranscript = transcriptSegments.Length > 1
+            var optimizedText = transcriptSegments.Length > 1
                 ? await _writingModelProvider
                     .OptimizeSegmentsAsync(transcriptSegments, cancellationToken)
                     .ConfigureAwait(false)
@@ -578,10 +693,9 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
                     .OptimizeAsync(transcript, cancellationToken)
                 .ConfigureAwait(false);
 
-            if (string.IsNullOrWhiteSpace(_optimizedTranscript))
-            {
-                _optimizedTranscript = transcript;
-            }
+            _optimizedTranscript = string.IsNullOrWhiteSpace(optimizedText)
+                ? transcript
+                : _domainTermCorrector.Correct(optimizedText.Trim(), _customVocabulary);
 
             if (!string.Equals(_optimizedTranscript, transcript, StringComparison.Ordinal)
                 && _insertionTarget is not null)
@@ -710,6 +824,9 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
         _sessionCancellation = new CancellationTokenSource();
         ResetBuffers();
         _guidance = WritingGuidance.Empty;
+        _supplementalGuidanceKey = string.Empty;
+        _supplementalDirections = [];
+        _supplementalMissingPoints = [];
         _draftTranscript = string.Empty;
         _optimizedTranscript = string.Empty;
         _replacementMessage = string.Empty;
@@ -913,9 +1030,13 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
             return;
         }
 
-        var baseText = isFinal
-            ? AppendText(_liveCommittedText, text)
-            : AppendText(_liveCommittedText, text);
+        var correctedText = _domainTermCorrector.Correct(text.Trim(), _customVocabulary);
+        if (string.IsNullOrWhiteSpace(correctedText))
+        {
+            return;
+        }
+
+        var baseText = AppendText(_liveCommittedText, correctedText);
         var previousDocumentText = _liveSessionText;
         var updateResult = await _textInsertionService
             .UpdateLiveDraftAsync(previousDocumentText, baseText, _insertionTarget)
@@ -927,7 +1048,7 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
             return;
         }
 
-        _draftTranscript = text;
+        _draftTranscript = correctedText;
         _liveSessionText = baseText;
         if (isFinal)
         {
@@ -937,7 +1058,7 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
         PublishSessionUpdate(isFinal
             ? "已确认一句，继续实时输入..."
             : "正在实时输入...");
-        QueueGuidanceUpdate(GetDocumentTranscript(), generation);
+        RefreshLocalGuidance(GetDocumentTranscript(), generation);
     }
 
     private async Task DrainLiveTranscriptQueueAsync()

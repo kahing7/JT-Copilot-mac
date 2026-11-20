@@ -22,6 +22,8 @@ public sealed class JsonAppSettingsStoreTests
             {
                 PreferredMicrophoneDeviceId = "2",
                 Hotkey = "Ctrl+Shift+J+T",
+                CustomVocabulary = "CRM系统=新奥尔良系统",
+                GuidanceTemplate = DocumentTemplate.ProjectManagement,
                 IsTopmost = false,
                 WindowLeft = 120,
                 WindowTop = 80,

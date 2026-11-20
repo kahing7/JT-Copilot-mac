@@ -62,4 +62,17 @@ public sealed class AppSettingsTests
         Assert.Equal(35, normalized.OrbOpacityPercent);
         Assert.Equal(100, normalized.GuidanceOpacityPercent);
     }
+
+    [Fact]
+    public void Normalize_RejectsUnknownGuidanceTemplate()
+    {
+        var settings = new AppSettings
+        {
+            GuidanceTemplate = (DocumentTemplate)999
+        };
+
+        var normalized = settings.Normalize();
+
+        Assert.Equal(DocumentTemplate.Auto, normalized.GuidanceTemplate);
+    }
 }

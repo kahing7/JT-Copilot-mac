@@ -26,4 +26,8 @@ public interface IVoiceCaptureCoordinator : IDisposable
     Task CancelAsync(CancellationToken cancellationToken = default);
 
     void UpdateHotkey(HotkeyGesture gesture);
+
+    void UpdateDocumentTemplate(DocumentTemplate template);
+
+    void UpdateCustomVocabulary(string customVocabulary);
 }

@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="JT Copilot 表达引导"
         Width="430"
-        Height="472"
+        Height="520"
         WindowStyle="None"
         ResizeMode="NoResize"
         AllowsTransparency="True"
@@ -71,6 +71,27 @@
                           Margin="18,2,18,18"
                           VerticalScrollBarVisibility="Auto">
                 <StackPanel>
+                    <TextBlock Style="{StaticResource SectionLabelStyle}" Text="文档模板" />
+                    <ComboBox Height="34"
+                              Style="{StaticResource DarkComboBoxStyle}"
+                              ItemsSource="{Binding DocumentTemplateOptions}"
+                              SelectedItem="{Binding SelectedDocumentTemplate, Mode=TwoWay}"
+                              DisplayMemberPath="DisplayName"
+                              AutomationProperties.Name="文档模板" />
+                    <StackPanel Margin="2,7,0,0"
+                                Orientation="Horizontal">
+                        <TextBlock FontSize="11"
+                                   Foreground="{StaticResource TextTertiaryBrush}"
+                                   Text="当前识别：" />
+                        <TextBlock FontSize="11"
+                                   Foreground="{StaticResource AccentBrush}"
+                                   Text="{Binding DetectedTemplateLabel}" />
+                    </StackPanel>
+
+                    <Rectangle Height="1"
+                               Margin="0,16,0,14"
+                               Fill="{StaticResource BorderBrush}" />
+
                     <TextBlock Style="{StaticResource SectionLabelStyle}" Text="实时转录" />
                     <Border Padding="12,10"
                             Background="{StaticResource PanelRaisedBrush}"

@@ -176,6 +176,27 @@
                                Margin="0,18,0,16"
                                Fill="{StaticResource BorderBrush}" />
 
+                    <TextBlock Style="{StaticResource SectionLabelStyle}" Text="业务术语纠正" />
+                    <TextBox MinHeight="92"
+                             MaxHeight="150"
+                             Padding="10,8"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto"
+                             Background="{StaticResource PanelRaisedBrush}"
+                             Foreground="{StaticResource TextPrimaryBrush}"
+                             BorderBrush="{StaticResource BorderBrush}"
+                             Text="{Binding CustomVocabulary, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.Name="业务术语纠正" />
+                    <TextBlock Margin="2,6,0,0"
+                               FontSize="11"
+                               Foreground="{StaticResource TextTertiaryBrush}"
+                               Text="每行格式：标准词=误识别1,误识别2" />
+
+                    <Rectangle Height="1"
+                               Margin="0,18,0,16"
+                               Fill="{StaticResource BorderBrush}" />
+
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />

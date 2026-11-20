@@ -126,3 +126,34 @@
   required backspaces plus Unicode characters.
 - Reason: Rewriting the full text or using UIA for every character is slow and
   incompatible with some custom editors.
+
+## ADR-015: Correct Domain Vocabulary Before Live Insertion
+
+- Status: Accepted
+- Date: 2026-11-21
+- Decision: Apply built-in and user-defined domain aliases to Vosk partials,
+  Zhipu segments, and final optimized text before insertion or replacement.
+- Reason: Waiting for the final cloud pass leaves recurring errors visible during
+  dictation. Local aliases make the inserted text stable immediately.
+- Tradeoff: Aliases can be over-applied, so the built-in `可以吗` to `OK吗` rule is
+  limited to known business terms and users can edit their own vocabulary.
+
+## ADR-016: Make Local Templates Authoritative For Next-Sentence Guidance
+
+- Status: Accepted
+- Date: 2026-11-21
+- Decision: Build framework and next-sentence guidance locally on every corrected
+  partial; allow GLM to add only directions and missing points.
+- Reason: Network latency caused long pauses at exactly the moment the user needed
+  the next prompt.
+- Tradeoff: Built-in templates need explicit maintenance, while LLM output is
+  intentionally prevented from changing the primary prompt.
+
+## ADR-017: Persist The Selected Document Template
+
+- Status: Accepted
+- Date: 2026-11-21
+- Decision: Persist an Auto/ProjectManagement/PRD/WeeklyReport/Solution template
+  selection in app settings and expose it in the guidance panel.
+- Reason: Users often dictate recurring document types and should not need to
+  select the framework every session.

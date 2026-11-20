@@ -136,3 +136,32 @@ rounded rectangle. Both use:
 - a translucent graphite fallback;
 - separate persisted opacity values;
 - PerMonitorV2 DPI awareness.
+
+## V0.4: Domain Correction And Instant Templates
+
+Local Vosk partials now pass through `DomainTermCorrector` before insertion.
+The corrector supports:
+
+- built-in aliases for recurring Chinese ASR mistakes and English abbreviations;
+- user-defined `standard=alias1,alias2` vocabulary;
+- custom alias precedence over built-in aliases;
+- a narrow business-context rule for Vosk confusing `OK吗` with `可以吗`.
+
+The same corrector is applied to Zhipu segment text and the final optimized text.
+Custom standards are also appended to the Zhipu ASR prompt as vocabulary hints.
+
+`LocalDocumentFrameworkEngine` resolves Auto, project-management, PRD, weekly
+report, solution, or general templates. It runs synchronously on every corrected
+partial and updates:
+
+- the complete framework;
+- the next-sentence prompt;
+- the current stage;
+- a local direction and missing-point checklist.
+
+The selected template is persisted in `settings.json` and can be changed from the
+guidance panel. Auto mode detects the document type from recent transcript terms.
+
+GLM guidance is now a non-blocking supplement. A stale request cannot replace the
+local framework or next sentence; only its directions and missing points are
+merged when the local stage is unchanged.

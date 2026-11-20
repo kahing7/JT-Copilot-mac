@@ -4,9 +4,10 @@ public sealed record WritingGuidance(
     IReadOnlyList<string> Framework,
     string NextSentence,
     IReadOnlyList<string> Directions,
-    IReadOnlyList<string> MissingPoints)
+    IReadOnlyList<string> MissingPoints,
+    DocumentTemplate Template = DocumentTemplate.Auto)
 {
-    public static WritingGuidance Empty { get; } = new([], string.Empty, [], []);
+    public static WritingGuidance Empty { get; } = new([], string.Empty, [], [], DocumentTemplate.Auto);
 }
 
 public sealed record WritingSessionUpdate(
