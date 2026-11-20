@@ -1,10 +1,13 @@
+using JT.Copilot.Application.Hotkeys;
+
 namespace JT.Copilot.Application.Models;
 
 public sealed record AppSettings
 {
-    public const string DefaultHotkey = "Ctrl+Alt+Space";
+    public const string DefaultHotkey = "Ctrl+Shift+J+T";
+    public const int CurrentSchemaVersion = 2;
 
-    public int SchemaVersion { get; init; } = 1;
+    public int SchemaVersion { get; init; } = CurrentSchemaVersion;
 
     public string PreferredMicrophoneDeviceId { get; init; } = string.Empty;
 
@@ -20,11 +23,22 @@ public sealed record AppSettings
 
     public AppSettings Normalize()
     {
+        // Version 1 always used Ctrl+Alt+Space because the setting was read-only.
+        var hotkey = SchemaVersion < CurrentSchemaVersion
+            && string.Equals(Hotkey, "Ctrl+Alt+Space", StringComparison.OrdinalIgnoreCase)
+                ? DefaultHotkey
+                : Hotkey;
+
+        if (!HotkeyGesture.TryParse(hotkey, out var gesture))
+        {
+            gesture = HotkeyGesture.Default;
+        }
+
         return this with
         {
-            SchemaVersion = 1,
+            SchemaVersion = CurrentSchemaVersion,
             PreferredMicrophoneDeviceId = PreferredMicrophoneDeviceId?.Trim() ?? string.Empty,
-            Hotkey = string.IsNullOrWhiteSpace(Hotkey) ? DefaultHotkey : Hotkey.Trim()
+            Hotkey = gesture.ToSettingString()
         };
     }
 }

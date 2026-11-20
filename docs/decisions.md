@@ -12,7 +12,7 @@
 
 ## ADR-002: Use Ctrl+Alt+Space For Hold-To-Talk
 
-- Status: Accepted
+- Status: Superseded by ADR-007
 - Date: 2026-11-21
 - Decision: Use `Ctrl + Alt + Space` instead of `Alt + Space`.
 - Reason: `Alt + Space` collides with the Windows window system menu and would
@@ -50,3 +50,14 @@
   own state machine and must run asynchronously after transcription.
 - Reason: Combining write and analysis states in one enum makes parallel failures
   and retries ambiguous.
+
+## ADR-007: Make The Hold-To-Talk Chord Configurable
+
+- Status: Accepted
+- Date: 2026-11-21
+- Decision: Make the global chord editable in Settings and use
+  `Ctrl+Shift+J+T` as the default.
+- Reason: The user needs to avoid conflicts with their own applications, and the
+  old read-only default was not adaptable.
+- Tradeoff: A multi-key global chord is swallowed while the app is running. The
+  settings window provides validation and a one-click default restore.

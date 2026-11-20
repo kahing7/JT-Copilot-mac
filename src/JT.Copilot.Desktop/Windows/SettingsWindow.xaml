@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="JT Copilot 设置"
         Width="440"
-        Height="430"
+        Height="458"
         WindowStyle="None"
         ResizeMode="NoResize"
         AllowsTransparency="True"
@@ -78,15 +78,67 @@
                                Fill="{StaticResource BorderBrush}" />
 
                     <TextBlock Style="{StaticResource SectionLabelStyle}" Text="全局快捷键" />
-                    <TextBox Height="36"
-                             Padding="10,0"
-                             VerticalContentAlignment="Center"
-                             IsReadOnly="True"
-                             Background="{StaticResource PanelRaisedBrush}"
-                             Foreground="{StaticResource TextPrimaryBrush}"
-                             BorderBrush="{StaticResource BorderBrush}"
-                             Text="{Binding HotkeyText}"
-                             AutomationProperties.Name="全局快捷键" />
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="58" />
+                            <ColumnDefinition Width="58" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="HotkeyBox"
+                                 Height="36"
+                                 Padding="10,0"
+                                 VerticalContentAlignment="Center"
+                                 IsReadOnly="True"
+                                 Cursor="Hand"
+                                 Background="{StaticResource PanelRaisedBrush}"
+                                 Foreground="{StaticResource TextPrimaryBrush}"
+                                 BorderBrush="{StaticResource BorderBrush}"
+                                 Text="{Binding HotkeyText}"
+                                 PreviewMouseLeftButtonDown="HotkeyBox_OnPreviewMouseLeftButtonDown"
+                                 PreviewKeyDown="HotkeyBox_OnPreviewKeyDown"
+                                 PreviewKeyUp="HotkeyBox_OnPreviewKeyUp"
+                                 LostKeyboardFocus="HotkeyBox_OnLostKeyboardFocus"
+                                 AutomationProperties.Name="全局快捷键" />
+                        <Button Grid.Column="1"
+                                Height="36"
+                                Margin="8,0,0,0"
+                                MinWidth="0"
+                                Style="{StaticResource CommandButtonStyle}"
+                                Click="ModifyHotkeyButton_OnClick"
+                                Content="修改" />
+                        <Button Grid.Column="2"
+                                Height="36"
+                                Margin="8,0,0,0"
+                                MinWidth="0"
+                                Style="{StaticResource CommandButtonStyle}"
+                                Click="DefaultHotkeyButton_OnClick"
+                                Content="默认" />
+                        <TextBlock Grid.Row="1"
+                                   Grid.ColumnSpan="3"
+                                   Margin="2,6,0,0"
+                                   FontSize="11"
+                                   Foreground="{StaticResource DangerBrush}"
+                                   Text="{Binding HotkeyError}"
+                                   TextWrapping="Wrap">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HotkeyError}" Value="">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding HotkeyError}" Value="{x:Null}">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
 
                     <Rectangle Height="1"
                                Margin="0,18,0,16"

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using JT.Copilot.Application.Abstractions;
+using JT.Copilot.Application.Hotkeys;
 using JT.Copilot.Application.Models;
 using JT.Copilot.Domain.Enums;
 
@@ -41,19 +42,22 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
 
     public VoiceCaptureSnapshot Current { get; private set; } = VoiceCaptureSnapshot.Idle;
 
-    public Task InitializeAsync(CancellationToken cancellationToken = default)
+    public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         cancellationToken.ThrowIfCancellationRequested();
 
         if (_initialized)
         {
-            return Task.CompletedTask;
+            return;
         }
 
         try
         {
-            _globalHotkeyService.Start();
+            // Low-level keyboard hooks must be installed on the UI thread so the
+            // WPF dispatcher can deliver hook callbacks.
+            var settings = await _settingsStore.LoadAsync(cancellationToken);
+            _globalHotkeyService.Start(HotkeyGesture.ParseOrDefault(settings.Hotkey));
             _initialized = true;
         }
         catch (Exception exception)
@@ -63,8 +67,6 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
                 TimeSpan.Zero,
                 ErrorMessage: $"全局快捷键启动失败：{exception.Message}"));
         }
-
-        return Task.CompletedTask;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
@@ -145,6 +147,19 @@ public sealed class VoiceCaptureCoordinator : IVoiceCaptureCoordinator
         {
             _stateGate.Release();
         }
+    }
+
+    public void UpdateHotkey(HotkeyGesture gesture)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(gesture);
+
+        if (Current.State == VoiceCaptureState.Recording)
+        {
+            throw new InvalidOperationException("请先结束当前录音，再修改全局快捷键。");
+        }
+
+        _globalHotkeyService.Reconfigure(gesture);
     }
 
     public void Dispose()

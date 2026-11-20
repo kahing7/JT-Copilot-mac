@@ -17,9 +17,9 @@ Build succeeded.
 
 ```text
 dotnet test JT.Copilot.slnx
-Unit tests:        10 passed
+Unit tests:        20 passed
 Integration tests: 1 passed
-Total:             11 passed
+Total:             21 passed
 ```
 
 Covered behavior:
@@ -29,6 +29,7 @@ Covered behavior:
 - cancellation returning to idle;
 - finite and invalid window placements;
 - settings normalization;
+- hotkey parsing, defaulting, migration, and multi-key validation;
 - JSON settings round-trip.
 
 ## Desktop Runtime
@@ -39,10 +40,13 @@ Covered behavior:
 - Main window and controls were visible to Windows UI Automation.
 - Expanded and collapsed bounds were verified as `372 x 166` and `72 x 72`.
 - Settings dialog opened and closed without terminating the process.
+- The hotkey was changed to a temporary `Ctrl + Alt + F9`, used successfully,
+  then restored to `Ctrl + Shift + J + T` from Settings.
 
 ## Real Audio Capture
 
-The global shortcut was exercised with synthesized `Ctrl + Alt + Space` input.
+The global shortcut was exercised with synthesized `Ctrl + Shift + J + T` input.
+The old `Ctrl + Alt + Space` chord did not trigger recording.
 The application recorded for approximately two seconds and produced:
 
 ```text

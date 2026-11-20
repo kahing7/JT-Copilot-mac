@@ -4,6 +4,7 @@ using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using JT.Copilot.Application.Abstractions;
+using JT.Copilot.Application.Hotkeys;
 using JT.Copilot.Application.Models;
 using JT.Copilot.Domain.Enums;
 using JT.Copilot.Infrastructure.Storage;
@@ -60,6 +61,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private string hotkeyText = AppSettings.DefaultHotkey;
+
+    [ObservableProperty]
+    private string hotkeyError = string.Empty;
 
     [ObservableProperty]
     private string lastRecordingPath = string.Empty;
@@ -142,6 +146,101 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             VoiceCaptureState.Faulted,
             TimeSpan.Zero,
             ErrorMessage: message));
+    }
+
+    public void BeginHotkeyCapture()
+    {
+        HotkeyError = string.Empty;
+
+        if (IsRecording)
+        {
+            HotkeyError = "请先结束当前录音，再修改全局快捷键。";
+            return;
+        }
+
+        HotkeyText = "请按下新的组合";
+    }
+
+    public void PreviewHotkey(HotkeyModifiers modifiers, IReadOnlyCollection<int> virtualKeys)
+    {
+        if (virtualKeys.Count == 0)
+        {
+            HotkeyText = "请按下新的组合";
+            return;
+        }
+
+        if (HotkeyGesture.TryCreate(modifiers, virtualKeys, out var gesture))
+        {
+            HotkeyText = gesture.DisplayText;
+            HotkeyError = string.Empty;
+            return;
+        }
+
+        HotkeyText = "需要 Ctrl、Alt 或 Win 修饰键";
+    }
+
+    public void CancelHotkeyCapture()
+    {
+        HotkeyError = string.Empty;
+        HotkeyText = HotkeyGesture.ParseOrDefault(_settings.Hotkey).DisplayText;
+    }
+
+    public void ReportHotkeyError(string message)
+    {
+        HotkeyError = message;
+    }
+
+    public async Task<bool> ApplyHotkeyAsync(HotkeyGesture gesture)
+    {
+        ArgumentNullException.ThrowIfNull(gesture);
+
+        if (IsRecording)
+        {
+            HotkeyError = "请先结束当前录音，再修改全局快捷键。";
+            return false;
+        }
+
+        var previousSettings = _settings;
+        var previousGesture = HotkeyGesture.ParseOrDefault(_settings.Hotkey);
+
+        try
+        {
+            _voiceCaptureCoordinator.UpdateHotkey(gesture);
+            var updatedSettings = (_settings with
+            {
+                SchemaVersion = AppSettings.CurrentSchemaVersion,
+                Hotkey = gesture.ToSettingString()
+            }).Normalize();
+
+            await _settingsStore.SaveAsync(updatedSettings);
+            _settings = updatedSettings;
+            HotkeyText = gesture.DisplayText;
+            HotkeyError = string.Empty;
+            return true;
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Unable to update the global hotkey.");
+
+            try
+            {
+                _voiceCaptureCoordinator.UpdateHotkey(previousGesture);
+            }
+            catch (Exception rollbackException)
+            {
+                _logger.LogError(rollbackException, "Unable to restore the previous global hotkey.");
+            }
+
+            _settings = previousSettings;
+            HotkeyText = previousGesture.DisplayText;
+            HotkeyError = $"快捷键修改失败：{exception.Message}";
+            return false;
+        }
+    }
+
+    public Task<bool> RestoreDefaultHotkeyAsync()
+    {
+        return ApplyHotkeyAsync(HotkeyGesture.Default);
     }
 
     [RelayCommand]

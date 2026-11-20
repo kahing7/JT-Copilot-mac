@@ -1,4 +1,5 @@
 using JT.Copilot.Application.Abstractions;
+using JT.Copilot.Application.Hotkeys;
 using JT.Copilot.Application.Models;
 using JT.Copilot.Application.Services;
 using JT.Copilot.Domain.Enums;
@@ -84,8 +85,17 @@ public sealed class VoiceCaptureCoordinatorTests
 
         public bool IsRunning { get; private set; }
 
-        public void Start()
+        public HotkeyGesture Gesture { get; private set; } = HotkeyGesture.Default;
+
+        public void Start(HotkeyGesture gesture)
         {
+            Gesture = gesture;
+            IsRunning = true;
+        }
+
+        public void Reconfigure(HotkeyGesture gesture)
+        {
+            Gesture = gesture;
             IsRunning = true;
         }
 

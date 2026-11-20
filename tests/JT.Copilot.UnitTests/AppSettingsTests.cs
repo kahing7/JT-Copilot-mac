@@ -17,6 +17,34 @@ public sealed class AppSettingsTests
 
         Assert.Equal(AppSettings.DefaultHotkey, normalized.Hotkey);
         Assert.Equal("2", normalized.PreferredMicrophoneDeviceId);
-        Assert.Equal(1, normalized.SchemaVersion);
+        Assert.Equal(AppSettings.CurrentSchemaVersion, normalized.SchemaVersion);
+    }
+
+    [Fact]
+    public void Normalize_MigratesLegacyDefaultHotkey()
+    {
+        var settings = new AppSettings
+        {
+            SchemaVersion = 1,
+            Hotkey = "Ctrl+Alt+Space"
+        };
+
+        var normalized = settings.Normalize();
+
+        Assert.Equal("Ctrl+Shift+J+T", normalized.Hotkey);
+        Assert.Equal(AppSettings.CurrentSchemaVersion, normalized.SchemaVersion);
+    }
+
+    [Fact]
+    public void Normalize_ReplacesInvalidHotkeyWithDefault()
+    {
+        var settings = new AppSettings
+        {
+            Hotkey = "Shift+T"
+        };
+
+        var normalized = settings.Normalize();
+
+        Assert.Equal(AppSettings.DefaultHotkey, normalized.Hotkey);
     }
 }

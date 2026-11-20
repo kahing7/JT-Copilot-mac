@@ -20,7 +20,7 @@ public sealed class JsonAppSettingsStoreTests
             var expected = new AppSettings
             {
                 PreferredMicrophoneDeviceId = "2",
-                Hotkey = "Ctrl+Alt+Space",
+                Hotkey = "Ctrl+Shift+J+T",
                 IsTopmost = false,
                 WindowLeft = 120,
                 WindowTop = 80,

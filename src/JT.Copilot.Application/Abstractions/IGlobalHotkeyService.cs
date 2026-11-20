@@ -1,3 +1,5 @@
+using JT.Copilot.Application.Hotkeys;
+
 namespace JT.Copilot.Application.Abstractions;
 
 public interface IGlobalHotkeyService : IDisposable
@@ -10,7 +12,11 @@ public interface IGlobalHotkeyService : IDisposable
 
     bool IsRunning { get; }
 
-    void Start();
+    HotkeyGesture Gesture { get; }
+
+    void Start(HotkeyGesture gesture);
+
+    void Reconfigure(HotkeyGesture gesture);
 
     void Stop();
 }

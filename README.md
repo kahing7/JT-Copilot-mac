@@ -17,7 +17,8 @@ Implemented:
   and Desktop.
 - Frameless floating widget with expand/collapse, drag, Topmost, and placement
   persistence.
-- `Ctrl + Alt + Space` hold-to-talk global shortcut and `Esc` cancellation.
+- Configurable hold-to-talk shortcut, defaulting to `Ctrl + Shift + J + T`,
+  with `Esc` cancellation.
 - Real microphone enumeration and 16 kHz mono WAV capture through NAudio.
 - Local settings and recording storage.
 - Settings window with microphone selection, shortcut display, Topmost control,
@@ -52,9 +53,9 @@ dotnet test JT.Copilot.slnx
 dotnet run --project src/JT.Copilot.Desktop/JT.Copilot.Desktop.csproj
 ```
 
-Hold `Ctrl + Alt + Space` to record, release to save, and press `Esc` while
-recording to cancel. The settings action exposes the current microphone and the
-recording directory.
+Hold `Ctrl + Shift + J + T` to record, release to save, and press `Esc` while
+recording to cancel. The shortcut, microphone, Topmost behavior, and recording
+directory are available from Settings.
 
 ## Local Data
 
