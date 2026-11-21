@@ -7,9 +7,6 @@ struct SettingsView: View {
     @ObservedObject var model: AppModel
     var onClose: () -> Void
 
-    @State private var window: NSWindow?
-    @State private var dragStart: NSPoint?
-
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -190,44 +187,31 @@ struct SettingsView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("设置")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Theme.textPrimary)
-                Text("JT Copilot · macOS")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.textTertiary)
-            }
+        ZStack(alignment: .trailing) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("设置")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text("JT Copilot · macOS")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textTertiary)
+                }
 
-            Spacer()
+                Spacer()
+                Color.clear.frame(width: 42)
+            }
+            .padding(.leading, 18)
+            .padding(.top, 8)
+            .allowsHitTesting(false)
+
+            WindowDragArea(usesNativeWindowDrag: true)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             CloseIconButton(action: onClose)
+                .padding(.trailing, 10)
         }
-        .padding(.leading, 18)
-        .padding(.trailing, 10)
-        .padding(.top, 8)
         .frame(height: 58)
-        .background(WindowReader { window = $0 })
-        .gesture(
-            DragGesture(minimumDistance: 2)
-                .onChanged { value in
-                    guard let window else { return }
-                    if dragStart == nil {
-                        dragStart = window.frame.origin
-                    }
-                    guard let dragStart else { return }
-                    window.setFrameOrigin(
-                        NSPoint(
-                            x: dragStart.x + value.translation.width,
-                            y: dragStart.y - value.translation.height
-                        )
-                    )
-                }
-                .onEnded { _ in
-                    dragStart = nil
-                }
-        )
     }
 
     private var footer: some View {

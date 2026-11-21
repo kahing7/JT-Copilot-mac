@@ -7,8 +7,19 @@ cd "$ROOT"
 APP_NAME="JT Copilot"
 EXECUTABLE="JTCopilot"
 CONFIGURATION="${CONFIGURATION:-release}"
-IDENTITY="${CODESIGN_IDENTITY:--}"
+IDENTITY="${CODESIGN_IDENTITY:-}"
 APP="$ROOT/dist/$APP_NAME.app"
+
+# Prefer a stable local signing identity so macOS keeps permissions across
+# rebuilds. Explicitly set CODESIGN_IDENTITY=- to force ad-hoc signing.
+if [[ -z "$IDENTITY" ]]; then
+    IDENTITY="$(
+        security find-identity -v -p codesigning 2>/dev/null \
+            | sed -n 's/.*"\(Apple Development: .*\)"$/\1/p' \
+            | head -n 1
+    )"
+    IDENTITY="${IDENTITY:--}"
+fi
 
 if ! command -v swift >/dev/null 2>&1; then
     echo "未找到 swift。请先安装 Xcode 或 Command Line Tools。" >&2
@@ -68,6 +79,8 @@ echo
 echo "首次启动请在系统设置 → 隐私与安全性中允许："
 echo "  麦克风 / 语音识别 / 辅助功能"
 echo
-echo "提示：使用 ad-hoc 签名（-）时，每次重新构建都可能需要在“辅助功能”中重新添加本应用。"
-echo "      可在有 Apple Development 证书时这样构建以获得稳定授权："
-echo "      CODESIGN_IDENTITY=\"Apple Development: 你的名字 (TEAMID)\" bash scripts/build_app.sh"
+if [[ "$IDENTITY" == "-" ]]; then
+    echo "提示：当前使用 ad-hoc 签名，每次重新构建都可能需要在“辅助功能”中重新添加本应用。"
+else
+    echo "已使用稳定签名身份，后续重建通常会保留系统权限授权。"
+fi

@@ -140,7 +140,7 @@
 
 ## ADR-016: Make Local Templates Authoritative For Next-Sentence Guidance
 
-- Status: Accepted
+- Status: Superseded for macOS by ADR-020; retained on Windows
 - Date: 2026-11-21
 - Decision: Build framework and next-sentence guidance locally on every corrected
   partial; allow GLM to add only directions and missing points.
@@ -177,3 +177,42 @@
   stores.
 - Reason: Credential provisioning should not be coupled to the routine
   microphone, shortcut, and writing preferences UI.
+
+## ADR-020: Infer The Document Type Before Choosing The Next Sentence
+
+- Status: Accepted for macOS
+- Date: 2026-11-21
+- Decision: On each throttled live-guidance update, send the latest transcript to
+  GLM and require it to infer the document type first, then return the matching
+  framework and next-sentence prompt. Keep the local engine only as an immediate
+  fallback.
+- Reason: Users switch between project plans, meeting minutes, reports, and other
+  document types without declaring the type in advance. A keyword stage machine
+  can keep a stale template active and cannot adapt the prompt to current content.
+- Tradeoff: Guidance now depends on network latency for its best result. The
+  local fallback, request throttling, stage matching, and stale-response rejection
+  keep the panel usable while a response is pending or unavailable.
+- Follow-up: Guidance requests run through one serial worker instead of cancelling
+  the in-flight request whenever speech changes. Missing keys are shown as local
+  mode in the panel rather than silently pretending that GLM was used.
+
+## ADR-021: Keep The Guidance Surface Compact And Opacity-Coupled
+
+- Status: Accepted for macOS
+- Date: 2026-11-21
+- Decision: Prefer a compact two-hundred-sixty-point-high guidance panel focused
+  on the next sentence and current framework. Apply the guidance opacity setting
+  to inner content surfaces as well as the outer frosted background.
+- Reason: The previous panel occupied too much screen space and its inner cards
+  stayed visually opaque while the outer surface faded, making the setting look
+  broken and reducing access to the editor behind it.
+
+## ADR-022: Use Screen-Coordinate Drag Areas For Borderless Windows
+
+- Status: Accepted for macOS
+- Date: 2026-11-21
+- Decision: Place the shared AppKit drag probe above non-interactive header
+  content and use native `performDrag(with:)` for guidance and settings headers.
+- Reason: The borderless settings panel did not move reliably with local SwiftUI
+  translation values. Screen-coordinate deltas match the existing guidance-window
+  behavior, while native drag prevents tracking loss on non-activating panels.

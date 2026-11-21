@@ -67,6 +67,7 @@ final class HotkeyService {
             CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         }
         CGEvent.tapEnable(tap: tap, enable: true)
+        NSLog("JT Copilot: global hotkey listener started")
     }
 
     func reconfigure(gesture: HotkeyGesture) throws {
@@ -128,6 +129,7 @@ final class HotkeyService {
             if isGestureKey(keyCode), requiredModifiersSatisfied(event.flags) {
                 if !triggerDown, allGestureKeysPressed() {
                     triggerDown = true
+                    NSLog("JT Copilot: global hotkey triggered")
                     onPressed?()
                 }
                 return nil

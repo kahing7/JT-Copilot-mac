@@ -55,13 +55,15 @@ API Key 配置不在应用设置窗口中维护。
 
 1. 用 SwiftPM 编译当前架构（需要 Intel + Apple Silicon 通用包时加 `UNIVERSAL=1`）；
 2. 组装 `dist/JT Copilot.app`（含 Info.plist 与图标）；
-3. 使用 ad-hoc 签名并校验。
+3. 优先使用本机 Apple Development 证书签名；没有证书时回退到 ad-hoc 签名，并校验产物。
 
-如有 Apple Development 证书，建议用固定签名身份构建，避免每次重建后辅助功能授权失效：
+构建脚本会自动优先使用本机的 Apple Development 证书，避免每次重建后辅助功能授权失效。也可以显式指定签名身份：
 
 ```bash
 CODESIGN_IDENTITY="Apple Development: 你的名字 (TEAMID)" bash scripts/build_app.sh
 ```
+
+需要强制使用 ad-hoc 签名时传入 `CODESIGN_IDENTITY=-`。
 
 也可以直接用 Xcode 打开 `macos/Package.swift` 阅读/编辑代码；但可运行产物请用上面的脚本生成，因为麦克风与语音识别权限依赖 `.app` 包中的 `Info.plist`。
 

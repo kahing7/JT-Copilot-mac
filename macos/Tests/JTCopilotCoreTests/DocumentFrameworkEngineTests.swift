@@ -32,4 +32,20 @@ final class DocumentFrameworkEngineTests: XCTestCase {
         XCTAssertEqual(DocumentTemplate.prd, result.template)
         XCTAssertEqual("说明目标用户和使用场景", result.guidance.nextSentence)
     }
+
+    func testDetectAndBuildMeetingMinutesContext() {
+        let transcript = "今天整理一份会议纪要，参会人有产品和研发，先写会议主题"
+        let result = engine.build(transcript: transcript, template: .auto)
+
+        XCTAssertEqual(DocumentTemplate.meetingMinutes, result.template)
+        XCTAssertEqual("说明这次会议要解决什么问题", result.guidance.nextSentence)
+    }
+
+    func testMeetingGuidanceAdvancesAfterGoalIsSpoken() {
+        let transcript = "今天的会议主题是明年的财务规划，主要是要跟大家对齐一下公司财务预算方面的问题"
+        let result = engine.build(transcript: transcript, template: .auto)
+
+        XCTAssertEqual(DocumentTemplate.meetingMinutes, result.template)
+        XCTAssertEqual("按议题梳理讨论的关键观点", result.guidance.nextSentence)
+    }
 }

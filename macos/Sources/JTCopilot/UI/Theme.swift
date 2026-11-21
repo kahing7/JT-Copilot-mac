@@ -46,41 +46,11 @@ struct VisualEffectView: NSViewRepresentable {
     }
 }
 
-/// 允许点击非控件区域拖动无边框窗口。
-private final class WindowProbeView: NSView {
-    var onWindow: ((NSWindow?) -> Void)?
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            onWindow?(window)
-        }
-    }
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        nil
-    }
-}
-
-struct WindowReader: NSViewRepresentable {
-    let onWindow: (NSWindow?) -> Void
-
-    func makeNSView(context: Context) -> NSView {
-        let view = WindowProbeView(frame: .zero)
-        view.onWindow = onWindow
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        (nsView as? WindowProbeView)?.onWindow = onWindow
-    }
-}
-
 /// 使用屏幕坐标拖动窗口，避免窗口移动后局部手势坐标变化造成跟随迟滞。
 private final class WindowDragProbeView: NSView {
     var onClick: (() -> Void)?
     var clampsToVisibleFrame = false
+    var usesNativeWindowDrag = false
 
     private static let dragThreshold: CGFloat = 3
 
@@ -110,7 +80,14 @@ private final class WindowDragProbeView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         guard let window else { return }
+        if usesNativeWindowDrag {
+            NSLog("JT Copilot: native window drag started")
+            window.performDrag(with: event)
+            return
+        }
+
         window.makeKey()
+        NSLog("JT Copilot: window drag mouseDown")
         mouseDownLocation = window.convertPoint(toScreen: event.locationInWindow)
         initialWindowOrigin = window.frame.origin
         didDrag = false
@@ -132,6 +109,7 @@ private final class WindowDragProbeView: NSView {
         if !didDrag {
             guard hypot(deltaX, deltaY) >= Self.dragThreshold else { return }
             didDrag = true
+            NSLog("JT Copilot: window drag started")
             NSCursor.closedHand.push()
         }
 
@@ -185,11 +163,13 @@ private final class WindowDragProbeView: NSView {
 
 struct WindowDragArea: NSViewRepresentable {
     var clampsToVisibleFrame = false
+    var usesNativeWindowDrag = false
     var onClick: (() -> Void)?
 
     func makeNSView(context: Context) -> NSView {
         let view = WindowDragProbeView(frame: .zero)
         view.clampsToVisibleFrame = clampsToVisibleFrame
+        view.usesNativeWindowDrag = usesNativeWindowDrag
         view.onClick = onClick
         return view
     }
@@ -197,6 +177,7 @@ struct WindowDragArea: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {
         guard let view = nsView as? WindowDragProbeView else { return }
         view.clampsToVisibleFrame = clampsToVisibleFrame
+        view.usesNativeWindowDrag = usesNativeWindowDrag
         view.onClick = onClick
     }
 }
@@ -227,7 +208,7 @@ struct SectionLabel: View {
     var body: some View {
         Text(text)
             .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(Theme.textTertiary)
+            .foregroundStyle(Theme.textSecondary)
     }
 }
 

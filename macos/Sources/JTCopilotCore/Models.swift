@@ -8,6 +8,7 @@ public enum DocumentTemplate: Int, CaseIterable, Codable, Hashable, Sendable {
     case weeklyReport = 3
     case solution = 4
     case general = 5
+    case meetingMinutes = 6
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
@@ -37,6 +38,7 @@ public enum DocumentTemplateCatalog {
     public static let all: [DocumentTemplateOption] = [
         .init(value: .auto, displayName: "自动识别"),
         .init(value: .projectManagement, displayName: "项目管理文档"),
+        .init(value: .meetingMinutes, displayName: "会议纪要"),
         .init(value: .prd, displayName: "PRD"),
         .init(value: .weeklyReport, displayName: "周报"),
         .init(value: .solution, displayName: "方案文档")

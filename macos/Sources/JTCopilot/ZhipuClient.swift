@@ -170,26 +170,45 @@ final class ZhipuWritingModelProvider {
         self.session = URLSession(configuration: configuration)
     }
 
+    var isConfigured: Bool {
+        apiKeyStore.hasApiKey
+    }
+
     func analyze(transcript: String, previousGuidance: WritingGuidance?) async throws -> WritingGuidance {
         let previousFramework = previousGuidance?.framework.joined(separator: "；") ?? "无"
+        let previousTemplate = previousGuidance.map {
+            DocumentTemplateCatalog.displayName(for: $0.template)
+        } ?? "自动识别"
         let content = try await completeJSON(
-            system: "你是实时口述写作教练。只输出JSON，不要解释，不要输出思考过程。"
-                + "目标是在用户连续口述时帮助其避免卡壳。"
-                + "输出字段：framework字符串数组、next_sentence字符串、directions字符串数组、missing_points字符串数组。"
-                + "每项不超过40字，建议必须具体，不要复述整段内容。",
-            user: "已有框架：\(previousFramework)\n当前全文：\(clip(transcript))",
-            maxTokens: 420,
+            system: "你是实时中文口述写作教练。只输出JSON，不要解释，不要输出思考过程。"
+                + "第一步必须根据当前全文判断用户正在写什么文档，不能要求用户先声明类型。"
+                + "可选模板：project_management（项目管理文档）、meeting_minutes（会议纪要）、"
+                + "prd（产品需求文档）、weekly_report（工作周报）、solution（方案文档）、general（通用写作）。"
+                + "第二步按所选文档的标准框架继续写作，框架示例：项目管理为项目背景、目标、范围、里程碑、职责、风险、交付验收；"
+                + "会议纪要为会议信息、会议目标、讨论要点、结论决策、行动项、待确认事项；"
+                + "PRD为用户场景、目标指标、功能范围、流程交互、需求细节、验收；"
+                + "周报为进展、结果、问题风险、下周计划、协作依赖；方案为背景、目标约束、总体方案、关键设计、实施、风险、验收。"
+                + "第三步结合全文判断哪些栏目已写、当前在哪个栏目，并给出用户现在可以直接接着说的下一句提示。"
+                + "已有框架只用于保持连续性；如果最新内容表明文档类型不对，必须立即切换。"
+                + "输出字段：template字符串、framework字符串数组、next_sentence字符串、directions字符串数组、missing_points字符串数组。"
+                + "framework使用所选模板的完整栏目并在当前栏目后标“当前”；next_sentence要具体点明下一栏和应说内容，不超过40字。",
+            user: "上次判断：\(previousTemplate)\n已有框架：\(previousFramework)\n当前全文：\(clip(transcript))",
+            maxTokens: 640,
             model: fastModel,
             temperature: 0.1
         )
 
         let decoded = try JSONDecoder().decode(GuidanceDTO.self, from: Data(content.utf8))
+        let template = Self.template(
+            from: decoded.template,
+            fallback: previousGuidance?.template ?? .general
+        )
         return WritingGuidance(
             framework: Self.clean(decoded.framework),
             nextSentence: decoded.nextSentence?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
             directions: Self.clean(decoded.directions),
             missingPoints: Self.clean(decoded.missingPoints),
-            template: .auto
+            template: template
         )
     }
 
@@ -312,6 +331,32 @@ final class ZhipuWritingModelProvider {
         return result
     }
 
+    private static func template(
+        from value: String?,
+        fallback: DocumentTemplate
+    ) -> DocumentTemplate {
+        let normalized = value?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+
+        switch normalized {
+        case "project_management", "project-management", "projectmanagement", "项目管理文档", "项目管理":
+            return .projectManagement
+        case "meeting_minutes", "meeting-minutes", "meetingminutes", "会议纪要", "会议记录":
+            return .meetingMinutes
+        case "prd", "产品需求文档":
+            return .prd
+        case "weekly_report", "weekly-report", "weeklyreport", "工作周报", "周报":
+            return .weeklyReport
+        case "solution", "方案文档", "技术方案":
+            return .solution
+        case "general", "通用写作":
+            return .general
+        default:
+            return fallback
+        }
+    }
+
     private static func extractJSONObject(_ content: String) -> String {
         guard let first = content.firstIndex(of: "{"),
               let last = content.lastIndex(of: "}"),
@@ -366,12 +411,14 @@ final class ZhipuWritingModelProvider {
     }
 
     private struct GuidanceDTO: Decodable {
+        let template: String?
         let framework: [String]?
         let nextSentence: String?
         let directions: [String]?
         let missingPoints: [String]?
 
         enum CodingKeys: String, CodingKey {
+            case template
             case framework
             case nextSentence = "next_sentence"
             case directions

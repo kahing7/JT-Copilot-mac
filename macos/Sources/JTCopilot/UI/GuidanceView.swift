@@ -14,14 +14,14 @@ struct GuidanceView: View {
                 .fill(Theme.border.opacity(0.65))
                 .frame(height: 1)
 
-            HStack(alignment: .top, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
                 guidanceColumn
-                    .frame(width: 260)
+                    .frame(width: 270)
 
                 verticalDivider
 
                 frameworkColumn
-                    .frame(width: 190)
+                    .frame(width: 210)
 
                 verticalDivider
 
@@ -29,59 +29,64 @@ struct GuidanceView: View {
                     .frame(maxWidth: .infinity)
             }
             .padding(.horizontal, 16)
-            .padding(.top, 12)
-            .padding(.bottom, 14)
+            .padding(.top, 8)
+            .padding(.bottom, 12)
             .frame(maxHeight: .infinity, alignment: .top)
         }
-        .frame(width: 820, height: 380)
+        .frame(width: 820, height: 260)
         .background(
             FrostedBackground(
-                cornerRadius: 18,
+                cornerRadius: 14,
                 tint: Theme.panel.opacity(0.45 * model.guidanceOpacityScale),
                 material: .underWindowBackground,
                 blurOpacity: 0.2
             )
         )
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .preferredColorScheme(.dark)
     }
 
     private var header: some View {
-        ZStack {
-            WindowDragArea(clampsToVisibleFrame: true)
-
+        ZStack(alignment: .trailing) {
             HStack(spacing: 9) {
                 Image(systemName: "line.3.horizontal")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Theme.textTertiary)
-                    .allowsHitTesting(false)
+                    .foregroundStyle(Theme.textSecondary)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("表达引导")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Theme.textPrimary)
-                    Text(model.sessionStatus.isEmpty ? "等待开始" : model.sessionStatus)
+                    Text(model.apiKeyStatus == "已安全配置"
+                         ? (model.sessionStatus.isEmpty ? "等待开始" : model.sessionStatus)
+                         : "本地引导 · 未配置智谱 Key")
                         .font(.system(size: 11))
-                        .foregroundStyle(Theme.textSecondary)
+                        .foregroundStyle(model.apiKeyStatus == "已安全配置"
+                                         ? Theme.textSecondary
+                                         : Theme.warning)
                         .lineLimit(1)
                 }
-                .allowsHitTesting(false)
 
                 Spacer()
-
-                CloseIconButton {
-                    model.dismissGuidance()
-                }
+                Color.clear.frame(width: 42)
             }
             .padding(.leading, 16)
+            .padding(.top, 5)
+            .allowsHitTesting(false)
+
+            WindowDragArea(usesNativeWindowDrag: true)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            CloseIconButton {
+                model.dismissGuidance()
+            }
             .padding(.trailing, 10)
-            .padding(.top, 7)
         }
-        .frame(height: 56)
+        .frame(height: 42)
     }
 
     private var guidanceColumn: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             nextSentenceCard
 
             ScrollView {
@@ -114,10 +119,10 @@ struct GuidanceView: View {
                     .padding(.vertical, 14)
 
                 Text("当前框架")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Theme.textSecondary)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(Theme.textPrimary)
                 frameworkList
-                    .padding(.top, 8)
+                    .padding(.top, 6)
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
@@ -130,10 +135,10 @@ struct GuidanceView: View {
             SectionLabel(text: "实时转录")
 
             liveTranscriptPanel
-                .padding(.top, 8)
+                .padding(.top, 6)
 
             DividerLine()
-                .padding(.vertical, 12)
+                .padding(.vertical, 8)
 
             HStack(alignment: .center, spacing: 8) {
                 SectionLabel(text: model.replacementMessage.isEmpty ? "优化结果" : model.replacementMessage)
@@ -150,11 +155,11 @@ struct GuidanceView: View {
                      ? "会话结束后，智谱会在这里给出优化后的全文。"
                      : model.optimizedTranscript)
                     .font(.system(size: 12))
-                    .lineSpacing(5)
+                    .lineSpacing(4)
                     .foregroundStyle(model.optimizedTranscript.isEmpty ? Theme.textTertiary : Theme.textPrimary)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                     .textSelection(.enabled)
-                    .padding(.top, 8)
+                    .padding(.top, 6)
                     .padding(.trailing, 4)
             }
             .scrollIndicators(.hidden)
@@ -168,12 +173,12 @@ struct GuidanceView: View {
             .font(.system(size: 13))
             .lineSpacing(4)
             .foregroundStyle(model.liveTranscript.isEmpty ? Theme.textTertiary : Theme.textPrimary)
-            .frame(maxWidth: .infinity, minHeight: 62, maxHeight: 62, alignment: .topLeading)
-            .lineLimit(4)
-            .padding(10)
+            .frame(maxWidth: .infinity, minHeight: 52, maxHeight: 52, alignment: .topLeading)
+            .lineLimit(3)
+            .padding(9)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Theme.panelRaised.opacity(0.88))
+                    .fill(Theme.panelRaised.opacity(0.9 * model.guidanceOpacityScale))
             )
     }
 
@@ -205,7 +210,7 @@ struct GuidanceView: View {
             .frame(height: 34)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Theme.panelRaised)
+                    .fill(Theme.panelRaised.opacity(0.86 * model.guidanceOpacityScale))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -231,9 +236,9 @@ struct GuidanceView: View {
                             .frame(width: 4, height: 4)
                             .padding(.top, 7)
                         Text(model.frameworkItems[index])
-                            .font(.system(size: 12))
+                            .font(.system(size: 12.5))
                             .lineSpacing(3)
-                            .foregroundStyle(Theme.textSecondary)
+                            .foregroundStyle(Theme.textPrimary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -244,21 +249,21 @@ struct GuidanceView: View {
     private var nextSentenceCard: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("下一句")
-                .font(.system(size: 10, weight: .medium))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Theme.accent)
             Text(model.nextSentence.isEmpty ? "等待引导" : model.nextSentence)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
                 .lineSpacing(4)
                 .foregroundStyle(Theme.textPrimary)
-                .lineLimit(4)
+                .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 9)
+        .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 5, style: .continuous)
-                .fill(Theme.panelRaised.opacity(0.9))
+                .fill(Theme.panelRaised.opacity(0.92 * model.guidanceOpacityScale))
         )
         .overlay(alignment: .leading) {
             Rectangle()
@@ -287,7 +292,7 @@ struct GuidanceView: View {
             HStack(spacing: 8) {
                 Text("可展开方向")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Theme.textSecondary)
+                    .foregroundStyle(Theme.textPrimary)
                 Text("\(model.directionItems.count) 条")
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.textTertiary)

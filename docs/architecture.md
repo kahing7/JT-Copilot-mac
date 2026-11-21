@@ -162,6 +162,38 @@ partial and updates:
 The selected template is persisted in `settings.json` and can be changed from the
 guidance panel. Auto mode detects the document type from recent transcript terms.
 
-GLM guidance is now a non-blocking supplement. A stale request cannot replace the
-local framework or next sentence; only its directions and missing points are
-merged when the local stage is unchanged.
+On the Windows path, GLM guidance remains a non-blocking supplement. A stale
+request cannot replace the local framework or next sentence; only its directions
+and missing points are merged when the local stage is unchanged.
+
+## V0.5: Model-Inferred Guidance On macOS
+
+The macOS guidance path keeps the local framework engine as an immediate
+fallback, but GLM now owns the primary writing decision:
+
+- infer the document type from the latest transcript instead of requiring the
+  user to choose a template first;
+- select the matching framework, including the new meeting-minutes template;
+- return the complete framework and the next sentence to speak;
+- replace the fallback prompt only when the response still matches the current
+  local document stage.
+
+Model requests are coalesced and throttled. Final speech results always request
+an update, while partial results may refresh the model view at most once every
+two seconds. A single worker owns all requests: a request in flight is never
+cancelled by the next transcript, and only the latest pending transcript is sent
+next. A response may update only the local framework stage that produced it.
+
+If no Zhipu key is available, the guidance header explicitly says that local
+guidance is active. Local guidance continues to advance from transcript signals,
+but it is not presented as a model-generated result.
+
+The macOS guidance panel is a compact `820 x 260` surface. The next sentence and
+current framework use primary text, while translucent inner cards multiply
+their fill opacity by the guidance-opacity preference so they stay synchronized
+with the outer panel.
+
+The title bar uses an AppKit drag probe above non-interactive SwiftUI header
+content and delegates to native `NSWindow.performDrag(with:)`. A diagnostic hit
+test confirms that the top-center header resolves to the drag probe rather than
+the SwiftUI hosting view.

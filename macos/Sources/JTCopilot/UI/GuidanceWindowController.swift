@@ -3,7 +3,7 @@ import SwiftUI
 
 @MainActor
 final class GuidanceWindowController: NSWindowController {
-    private static let panelSize = NSSize(width: 820, height: 380)
+    private static let panelSize = NSSize(width: 820, height: 260)
     private static let topMargin: CGFloat = 12
 
     private let model: AppModel
@@ -29,7 +29,7 @@ final class GuidanceWindowController: NSWindowController {
         panel.hasShadow = false
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
-        panel.isMovableByWindowBackground = false
+        panel.isMovableByWindowBackground = true
         panel.animationBehavior = .none
         let hostingView = NSHostingView(rootView: GuidanceView(model: model))
         hostingView.wantsLayer = true
@@ -57,6 +57,19 @@ final class GuidanceWindowController: NSWindowController {
             hasPositionedPanel = true
         }
         window?.orderFrontRegardless()
+
+        DispatchQueue.main.async { [weak self] in
+            guard let panel = self?.window,
+                  let contentView = panel.contentView else {
+                return
+            }
+            let point = NSPoint(
+                x: panel.frame.width * 0.65,
+                y: panel.frame.height - 21
+            )
+            let hitView = contentView.hitTest(point)
+            NSLog("JT Copilot: guidance header hit=%@", String(describing: hitView))
+        }
     }
 
     func hideGuidance() {

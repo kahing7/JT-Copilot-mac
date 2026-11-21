@@ -86,6 +86,20 @@ public final class DocumentFrameworkEngine {
         detectionTerms: ["方案", "总体设计", "技术方案", "架构", "实施计划"]
     )
 
+    private static let meetingMinutes = FrameworkDefinition(
+        template: .meetingMinutes,
+        displayName: "会议纪要",
+        stages: [
+            FrameworkStage(title: "会议信息", prompt: "先交代会议主题、时间和参会人", direction: "补充会议地点、主持人和记录人", keywords: ["会议信息", "会议主题", "参会人", "参会者", "时间", "地点"]),
+            FrameworkStage(title: "会议目标", prompt: "说明这次会议要解决什么问题", direction: "交代会议背景、目标和需要达成的共识", keywords: ["会议目标", "会议目的", "议题", "讨论什么", "主要是", "目标是", "要解决", "重点", "对齐"]),
+            FrameworkStage(title: "讨论要点", prompt: "按议题梳理讨论的关键观点", direction: "记录不同意见、依据和仍需澄清的问题", keywords: ["讨论要点", "讨论", "观点", "意见", "分歧"]),
+            FrameworkStage(title: "结论与决策", prompt: "总结已经形成的结论和决策", direction: "写清达成共识的事项、否决方案和决策依据", keywords: ["结论", "决策", "决定", "共识", "确认"]),
+            FrameworkStage(title: "行动项", prompt: "列出行动项、负责人和截止时间", direction: "每项行动都要有明确负责人、时间和交付结果", keywords: ["行动项", "待办", "负责人", "截止时间", "完成时间"]),
+            FrameworkStage(title: "待确认事项", prompt: "补充待确认事项和下次跟进安排", direction: "记录风险、未决问题和下次同步时间", keywords: ["待确认", "未决", "风险", "下次会议", "跟进"])
+        ],
+        detectionTerms: ["会议纪要", "会议记录", "开会", "会议", "参会人", "参会者", "会议主题", "议题", "会议结论", "行动项", "下次会议"]
+    )
+
     private static let general = FrameworkDefinition(
         template: .general,
         displayName: "通用写作",
@@ -149,6 +163,7 @@ public final class DocumentFrameworkEngine {
 
         let definitions = [
             DocumentFrameworkEngine.projectManagement,
+            DocumentFrameworkEngine.meetingMinutes,
             DocumentFrameworkEngine.prd,
             DocumentFrameworkEngine.weeklyReport,
             DocumentFrameworkEngine.solution
@@ -232,6 +247,8 @@ public final class DocumentFrameworkEngine {
             return DocumentFrameworkEngine.weeklyReport
         case .solution:
             return DocumentFrameworkEngine.solution
+        case .meetingMinutes:
+            return DocumentFrameworkEngine.meetingMinutes
         default:
             return DocumentFrameworkEngine.general
         }

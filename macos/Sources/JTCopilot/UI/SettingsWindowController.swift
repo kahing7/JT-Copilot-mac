@@ -25,7 +25,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.hasShadow = true
         window.level = .floating
         window.isReleasedWhenClosed = false
-        window.isMovableByWindowBackground = false
+        window.isMovableByWindowBackground = true
         window.animationBehavior = .none
         window.delegate = self
         window.contentView = NSHostingView(
