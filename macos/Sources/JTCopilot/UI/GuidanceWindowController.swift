@@ -3,7 +3,15 @@ import SwiftUI
 
 @MainActor
 final class GuidanceWindowController: NSWindowController {
-    private static let panelSize = NSSize(width: 820, height: 260)
+    private static let panelSize = NSSize(
+        width: GlassMetrics.panelWidth,
+        height: GlassMetrics.panelHeight
+    )
+    fileprivate static let shadowInset: CGFloat = 24
+    private static let windowSize = NSSize(
+        width: panelSize.width + shadowInset * 2,
+        height: panelSize.height + shadowInset * 2
+    )
     private static let topMargin: CGFloat = 12
 
     private let model: AppModel
@@ -13,7 +21,7 @@ final class GuidanceWindowController: NSWindowController {
         self.model = model
 
         let panel = GuidancePanel(
-            contentRect: NSRect(origin: .zero, size: Self.panelSize),
+            contentRect: NSRect(origin: .zero, size: Self.windowSize),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -29,9 +37,13 @@ final class GuidanceWindowController: NSWindowController {
         panel.hasShadow = false
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
-        panel.isMovableByWindowBackground = true
+        panel.isMovableByWindowBackground = false
         panel.animationBehavior = .none
-        let hostingView = NSHostingView(rootView: GuidanceView(model: model))
+        let rootView = GuidanceView(model: model)
+            .padding(Self.shadowInset)
+            .frame(width: Self.windowSize.width, height: Self.windowSize.height)
+            .background(Color.clear)
+        let hostingView = GuidanceHostingView(rootView: rootView)
         hostingView.wantsLayer = true
         hostingView.layer?.backgroundColor = NSColor.clear.cgColor
         panel.contentView = hostingView
@@ -65,7 +77,7 @@ final class GuidanceWindowController: NSWindowController {
             }
             let point = NSPoint(
                 x: panel.frame.width * 0.65,
-                y: panel.frame.height - 21
+                y: panel.frame.height - Self.shadowInset - 21
             )
             let hitView = contentView.hitTest(point)
             NSLog("JT Copilot: guidance header hit=%@", String(describing: hitView))
@@ -91,9 +103,34 @@ final class GuidanceWindowController: NSWindowController {
             max(visible.midX - size.width / 2, visible.minX),
             visible.maxX - size.width
         )
-        let y = visible.maxY - size.height - Self.topMargin
+        let y = visible.maxY
+            - size.height
+            + Self.shadowInset
+            - Self.topMargin
 
         panel.setFrameOrigin(NSPoint(x: x, y: y))
+    }
+}
+
+private final class GuidanceHostingView<Content: View>: NSHostingView<Content> {
+    private let interactiveInset = GuidanceWindowController.shadowInset
+
+    required init(rootView: Content) {
+        super.init(rootView: rootView)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let interactiveBounds = bounds.insetBy(
+            dx: interactiveInset,
+            dy: interactiveInset
+        )
+        guard interactiveBounds.contains(point) else { return nil }
+        return super.hitTest(point)
     }
 }
 

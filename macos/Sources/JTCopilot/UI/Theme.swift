@@ -28,24 +28,6 @@ extension Color {
     }
 }
 
-struct VisualEffectView: NSViewRepresentable {
-    var material: NSVisualEffectView.Material = .hudWindow
-
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = material
-        view.blendingMode = .behindWindow
-        view.state = .active
-        view.appearance = NSAppearance(named: .darkAqua)
-        return view
-    }
-
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
-        nsView.material = material
-        nsView.state = .active
-    }
-}
-
 /// 使用屏幕坐标拖动窗口，避免窗口移动后局部手势坐标变化造成跟随迟滞。
 private final class WindowDragProbeView: NSView {
     var onClick: (() -> Void)?
@@ -72,10 +54,6 @@ private final class WindowDragProbeView: NSView {
             }
         }
         return super.hitTest(point)
-    }
-
-    override func resetCursorRects() {
-        addCursorRect(bounds, cursor: .openHand)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -110,7 +88,6 @@ private final class WindowDragProbeView: NSView {
             guard hypot(deltaX, deltaY) >= Self.dragThreshold else { return }
             didDrag = true
             NSLog("JT Copilot: window drag started")
-            NSCursor.closedHand.push()
         }
 
         var origin = NSPoint(
@@ -127,9 +104,6 @@ private final class WindowDragProbeView: NSView {
 
     override func mouseUp(with event: NSEvent) {
         let wasClick = !didDrag
-        if didDrag {
-            NSCursor.pop()
-        }
 
         mouseDownLocation = nil
         initialWindowOrigin = nil
@@ -182,26 +156,6 @@ struct WindowDragArea: NSViewRepresentable {
     }
 }
 
-struct FrostedBackground: View {
-    var cornerRadius: CGFloat
-    var tint: Color
-    var material: NSVisualEffectView.Material = .hudWindow
-    var blurOpacity: Double = 1
-
-    var body: some View {
-        ZStack {
-            VisualEffectView(material: material)
-                .opacity(blurOpacity)
-            tint
-        }
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
-        )
-    }
-}
-
 struct SectionLabel: View {
     let text: String
 
@@ -236,7 +190,13 @@ struct CommandButtonStyle: ButtonStyle {
 }
 
 struct CloseIconButton: View {
+    let helpText: String
     let action: () -> Void
+
+    init(helpText: String = "关闭", action: @escaping () -> Void) {
+        self.helpText = helpText
+        self.action = action
+    }
 
     var body: some View {
         Button(action: action) {
@@ -251,7 +211,7 @@ struct CloseIconButton: View {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(Color.clear)
         )
-        .help("关闭")
+        .help(helpText)
     }
 }
 

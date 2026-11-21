@@ -26,6 +26,10 @@ final class VoiceCaptureCoordinator {
         subsystem: "com.jtcopilot.mac",
         category: "Guidance"
     )
+    private let sessionLogger = Logger(
+        subsystem: "com.jtcopilot.mac",
+        category: "Session"
+    )
 
     var onStateChanged: ((VoiceCaptureSnapshot) -> Void)?
     var onLevelChanged: ((Double) -> Void)?
@@ -55,15 +59,11 @@ final class VoiceCaptureCoordinator {
     private var optimizedTranscript = ""
     private var replacementMessage = ""
     private var statusMessage = ""
-    private var liveCommittedText = ""
     private var liveSessionText = ""
+    private var transcriptAccumulator = SessionTranscriptAccumulator()
     private var customVocabulary = ""
-    private var activeLocalGuidanceKey = ""
-    private var hasModelGuidance = false
-    private var lastModelGuidanceRequestAt = Date.distantPast
-    private var pendingModelTranscript: String?
-    private var pendingModelLocalGuidance: WritingGuidance?
-    private var pendingModelLocalGuidanceKey = ""
+    private var nextSentenceTranscriptKey = ""
+    private var lastValidNextSentence = ""
     private var documentTemplate: DocumentTemplate = .auto
     private var guidance = WritingGuidance.empty
     private var insertionTarget: TextInsertionService.Target?
@@ -129,7 +129,8 @@ final class VoiceCaptureCoordinator {
                 guard let self else { return }
 
                 if self.current.state == .recording {
-                    let fallback = self.liveSessionText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let fallback = self.transcriptAccumulator.fullText
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
                     if !fallback.isEmpty {
                         self.stableTranscript = fallback
                     }
@@ -249,6 +250,11 @@ final class VoiceCaptureCoordinator {
         guard !disposed, current.state == .recording, !finishing else { return }
 
         finishing = true
+        transcriptAccumulator.commitCurrent()
+        liveSessionText = transcriptAccumulator.fullText
+        sessionLogger.info(
+            "finish requested completedChars=\(self.transcriptAccumulator.completedText.count, privacy: .public) sessionChars=\(self.transcriptAccumulator.fullText.count, privacy: .public)"
+        )
         hotkeyService.captureEscape = false
         stopElapsedTimer()
         cancelSupplementalGuidance()
@@ -307,7 +313,12 @@ final class VoiceCaptureCoordinator {
         documentTemplate = resolved
 
         if current.state == .recording || current.state == .processing {
-            refreshLocalGuidance(documentTranscript(), generation: sessionGeneration)
+            refreshLocalGuidance(
+                documentTranscript(),
+                generation: sessionGeneration,
+                lastSentence: draftTranscript,
+                requestModelGuidance: true
+            )
         }
     }
 
@@ -389,6 +400,17 @@ final class VoiceCaptureCoordinator {
         if hasSpeech,
            (silenceLength >= VoiceCaptureCoordinator.silenceBeforeSegment
             || segmentLength >= VoiceCaptureCoordinator.maxSegmentLength) {
+            transcriptAccumulator.commitCurrent()
+            liveSessionText = transcriptAccumulator.fullText
+            let completedSentence = draftTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !completedSentence.isEmpty {
+                refreshLocalGuidance(
+                    documentTranscript(),
+                    generation: sessionGeneration,
+                    lastSentence: completedSentence,
+                    requestModelGuidance: true
+                )
+            }
             captureSegment()
         }
     }
@@ -448,7 +470,12 @@ final class VoiceCaptureCoordinator {
             segmentTexts.append(corrected)
 
             if liveRecognitionAvailable {
-                refreshLocalGuidance(documentTranscript(), generation: generation)
+                refreshLocalGuidance(
+                    documentTranscript(),
+                    generation: generation,
+                    lastSentence: corrected,
+                    requestModelGuidance: false
+                )
                 return
             }
 
@@ -469,7 +496,12 @@ final class VoiceCaptureCoordinator {
                 ? "文字已写入，正在更新表达框架..."
                 : result.message)
 
-            refreshLocalGuidance(stableTranscript, generation: generation)
+            refreshLocalGuidance(
+                stableTranscript,
+                generation: generation,
+                lastSentence: corrected,
+                requestModelGuidance: true
+            )
         } catch {
             publishSessionUpdate("语音识别失败：\(error.localizedDescription)")
         }
@@ -480,167 +512,177 @@ final class VoiceCaptureCoordinator {
     private func refreshLocalGuidance(
         _ transcript: String,
         generation: Int,
+        lastSentence: String = "",
         requestModelGuidance: Bool = true
     ) {
         guard generation == sessionGeneration else { return }
 
-        let result = documentFrameworkEngine.build(
-            transcript: transcript,
-            template: documentTemplate
-        )
-
-        let localGuidanceKey = [
-            String(result.guidance.template.rawValue),
-            result.guidance.nextSentence,
-            result.guidance.framework.joined(separator: "\u{1E}")
-        ].joined(separator: "\u{1F}")
-
-        let stageChanged = localGuidanceKey != activeLocalGuidanceKey
-        activeLocalGuidanceKey = localGuidanceKey
-
-        if stageChanged || !hasModelGuidance {
-            guidance = result.guidance
+        let trimmedTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTranscript.isEmpty else {
+            guidance = .empty
+            return
         }
+
+        let local = documentFrameworkEngine.build(
+            transcript: trimmedTranscript,
+            template: documentTemplate
+        ).guidance
+        guidance.framework = local.framework
+        guidance.directions = local.directions
+        guidance.missingPoints = local.missingPoints
+        guidance.template = local.template
 
         publishSessionUpdate(current.state == .recording
-            ? "正在聆听 · 下一步已同步"
-            : "正在整理全文 · 框架已同步")
+            ? "正在聆听 · 正在更新下一句…"
+            : "正在整理全文 · 正在更新框架…")
 
-        let modelRequestDue = requestModelGuidance
-            || Date().timeIntervalSince(lastModelGuidanceRequestAt) >= 2
-        if modelRequestDue, transcript.trimmingCharacters(in: .whitespacesAndNewlines).count >= 6 {
-            lastModelGuidanceRequestAt = Date()
-            queueSupplementalGuidance(
-                transcript: transcript,
-                generation: generation,
-                localGuidance: result.guidance,
-                localGuidanceKey: localGuidanceKey
-            )
-        }
+        queueNextSentenceGuidance(
+            transcript: trimmedTranscript,
+            generation: generation
+        )
     }
 
-    private func queueSupplementalGuidance(
+    private func queueNextSentenceGuidance(
         transcript: String,
-        generation: Int,
-        localGuidance: WritingGuidance,
-        localGuidanceKey: String
+        generation: Int
     ) {
-        guard transcript.trimmingCharacters(in: .whitespacesAndNewlines).count >= 6 else {
-            return
-        }
+        guard transcript.count >= 6 else { return }
         guard writingModelProvider.isConfigured else {
+            publishSessionUpdate("未配置智谱 Key · 下一句暂不可用")
             return
         }
 
-        pendingModelTranscript = transcript
-        pendingModelLocalGuidance = localGuidance
-        pendingModelLocalGuidanceKey = localGuidanceKey
-        startModelGuidanceWorker(generation: generation)
-    }
+        let guidanceKey = "\(generation)\u{1F}\(transcript)"
+        guard guidanceKey != nextSentenceTranscriptKey else { return }
+        nextSentenceTranscriptKey = guidanceKey
+        recordNextSentenceInHistory(lastValidNextSentence)
 
-    private func startModelGuidanceWorker(generation: Int) {
-        guard supplementalTask == nil, pendingModelTranscript != nil else { return }
+        let previousNextSentence = lastValidNextSentence
+        supplementalTask?.cancel()
 
         supplementalTask = Task { [weak self] in
             guard let self else { return }
 
-            defer {
-                supplementalTask = nil
-                if generation == sessionGeneration,
-                   pendingModelTranscript != nil,
-                   current.state == .recording || current.state == .processing {
-                    startModelGuidanceWorker(generation: generation)
-                }
-            }
-
-            while !Task.isCancelled,
-                  generation == sessionGeneration,
-                  current.state == .recording || current.state == .processing {
-                guard let transcript = pendingModelTranscript,
-                      let localGuidance = pendingModelLocalGuidance else {
+            do {
+                try await Task.sleep(nanoseconds: 180_000_000)
+                guard generation == sessionGeneration,
+                      guidanceKey == nextSentenceTranscriptKey,
+                      current.state == .recording || current.state == .processing else {
                     return
-                }
-                let localGuidanceKey = pendingModelLocalGuidanceKey
-                pendingModelTranscript = nil
-                pendingModelLocalGuidance = nil
-
-                do {
-                    try await Task.sleep(nanoseconds: 350_000_000)
-                } catch {
-                    return
-                }
-
-                if pendingModelTranscript != nil {
-                    continue
                 }
 
                 guidanceLogger.info(
-                    "request template=\(localGuidance.template.rawValue, privacy: .public) chars=\(transcript.count, privacy: .public)"
+                    "stream next sentence chars=\(transcript.count, privacy: .public)"
                 )
-                self.publishSessionUpdate("正在根据当前内容更新下一句...")
 
-                do {
-                    let analyzed = try await writingModelProvider.analyze(
-                        transcript: transcript,
-                        previousGuidance: localGuidance
-                    )
-
-                    guard generation == sessionGeneration,
-                          current.state == .recording || current.state == .processing else {
-                        return
-                    }
-
-                    if localGuidanceKey == activeLocalGuidanceKey {
-                        guidance = WritingGuidance(
-                            framework: analyzed.framework.isEmpty
-                                ? localGuidance.framework
-                                : analyzed.framework,
-                            nextSentence: analyzed.nextSentence.isEmpty
-                                ? localGuidance.nextSentence
-                                : analyzed.nextSentence,
-                            directions: merge(
-                                analyzed.directions,
-                                localGuidance.directions,
-                                limit: 6
-                            ),
-                            missingPoints: merge(
-                                analyzed.missingPoints,
-                                localGuidance.missingPoints,
-                                limit: 4
-                            ),
-                            template: analyzed.template
+                let streamed = try await writingModelProvider.streamNextSentence(
+                    transcript: transcript,
+                    previousNextSentence: previousNextSentence
+                ) { [weak self] text in
+                    Task { @MainActor in
+                        self?.applyStreamedNextSentence(
+                            text,
+                            guidanceKey: guidanceKey,
+                            generation: generation
                         )
-                        hasModelGuidance = true
-                        guidanceLogger.info(
-                            "applied template=\(analyzed.template.rawValue, privacy: .public) nextChars=\(guidance.nextSentence.count, privacy: .public)"
-                        )
-                    } else {
-                        guidanceLogger.info("discarded stale stage")
                     }
-
-                    publishSessionUpdate(current.state == .recording
-                        ? "正在聆听 · 已根据当前内容更新下一句"
-                        : "正在整理全文 · 已根据当前内容更新框架")
-                } catch is CancellationError {
-                    return
-                } catch ZhipuError.missingApiKey {
-                    hasModelGuidance = false
-                    publishSessionUpdate("未配置智谱 Key · 下一句使用本地规则")
-                    return
-                } catch {
-                    guidanceLogger.error("request failed: \(error.localizedDescription, privacy: .public)")
-                    publishSessionUpdate("表达建议暂不可用：\(error.localizedDescription)")
                 }
+
+                guard generation == sessionGeneration,
+                      guidanceKey == nextSentenceTranscriptKey,
+                      current.state == .recording || current.state == .processing else {
+                    return
+                }
+                applyFinalNextSentence(
+                    streamed,
+                    guidanceKey: guidanceKey,
+                    generation: generation,
+                    previousNextSentence: previousNextSentence
+                )
+
+                let supplemental = try await writingModelProvider.analyzeSupplement(
+                    transcript: transcript,
+                    previousGuidance: guidance
+                )
+                guard generation == sessionGeneration,
+                      guidanceKey == nextSentenceTranscriptKey else {
+                    return
+                }
+                if !supplemental.framework.isEmpty {
+                    guidance.framework = supplemental.framework
+                }
+                guidance.directions = merge(supplemental.directions, guidance.directions, limit: 6)
+                guidance.missingPoints = merge(
+                    supplemental.missingPoints,
+                    guidance.missingPoints,
+                    limit: 4
+                )
+                publishSessionUpdate(current.state == .recording
+                    ? "正在聆听 · 已更新下一句"
+                    : "正在整理全文 · 已补充内容框架")
+            } catch is CancellationError {
+            } catch ZhipuError.missingApiKey {
+                publishSessionUpdate("未配置智谱 Key · 下一句暂不可用")
+            } catch {
+                guidanceLogger.error("stream failed: \(error.localizedDescription, privacy: .public)")
+                publishSessionUpdate("下一句生成暂不可用：\(error.localizedDescription)")
             }
         }
+    }
+
+    private func applyStreamedNextSentence(
+        _ text: String,
+        guidanceKey: String,
+        generation: Int
+    ) {
+        guard generation == sessionGeneration,
+              guidanceKey == nextSentenceTranscriptKey,
+              !text.isEmpty else {
+            return
+        }
+
+        guidance.nextSentence = text
+        publishSessionUpdate("正在生成下一句…")
+    }
+
+    private func applyFinalNextSentence(
+        _ text: String,
+        guidanceKey: String,
+        generation: Int,
+        previousNextSentence: String
+    ) {
+        guard generation == sessionGeneration,
+              guidanceKey == nextSentenceTranscriptKey,
+              !text.isEmpty else {
+            return
+        }
+
+        recordNextSentenceInHistory(previousNextSentence)
+
+        guidance.nextSentence = text
+        lastValidNextSentence = text
+        publishSessionUpdate(current.state == .recording
+            ? "正在聆听 · 下一句已更新"
+            : "正在整理全文 · 下一句已更新")
+    }
+
+    private func recordNextSentenceInHistory(_ sentence: String) {
+        let updated = GuidanceHistory.appending(
+            sentence,
+            to: guidance.nextSentenceHistory
+        )
+        guard updated != guidance.nextSentenceHistory else { return }
+
+        guidance.nextSentenceHistory = updated
+        publishSessionUpdate(current.state == .recording
+            ? "正在聆听 · 正在更新下一句…"
+            : "正在整理全文 · 正在更新框架…")
     }
 
     private func cancelSupplementalGuidance() {
         supplementalTask?.cancel()
         supplementalTask = nil
-        pendingModelTranscript = nil
-        pendingModelLocalGuidance = nil
-        pendingModelLocalGuidanceKey = ""
+        nextSentenceTranscriptKey = ""
     }
 
     private func merge(_ primary: [String], _ supplemental: [String], limit: Int) -> [String] {
@@ -706,13 +748,15 @@ final class VoiceCaptureCoordinator {
 
         guard !corrected.isEmpty else { return }
 
-        let baseText = TranscriptMerger.append(existing: liveCommittedText, incoming: corrected).text
+        transcriptAccumulator.updateHypothesis(corrected)
+        if update.isFinal {
+            transcriptAccumulator.commitCurrent()
+        }
+
+        let baseText = transcriptAccumulator.fullText
         let previousDocumentText = liveSessionText
         draftTranscript = corrected
         liveSessionText = baseText
-        if update.isFinal {
-            liveCommittedText = baseText
-        }
 
         let result = await textInsertionService.updateLiveDraft(
             previous: previousDocumentText,
@@ -726,6 +770,7 @@ final class VoiceCaptureCoordinator {
         refreshLocalGuidance(
             documentTranscript(),
             generation: generation,
+            lastSentence: corrected,
             requestModelGuidance: update.isFinal
         )
     }
@@ -743,6 +788,9 @@ final class VoiceCaptureCoordinator {
     private func completeSession(recordingPath: String?) async {
         cancelSupplementalGuidance()
         let transcript = documentTranscript()
+        sessionLogger.info(
+            "optimization started chars=\(transcript.count, privacy: .public) segments=\(self.segmentTexts.count, privacy: .public)"
+        )
 
         guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             replacementMessage = "本次会话没有识别到有效文字。"
@@ -774,6 +822,9 @@ final class VoiceCaptureCoordinator {
                     .trimmingCharacters(in: .whitespacesAndNewlines)
 
             optimizedTranscript = corrected
+            sessionLogger.info(
+                "optimization finished inputChars=\(transcript.count, privacy: .public) outputChars=\(corrected.count, privacy: .public)"
+            )
 
             if corrected != transcript {
                 if let target = insertionTarget {
@@ -808,8 +859,9 @@ final class VoiceCaptureCoordinator {
     // MARK: - Helpers
 
     private func documentTranscript() -> String {
-        if liveRecognitionAvailable, !liveSessionText.isEmpty {
-            return liveSessionText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if liveRecognitionAvailable {
+            return transcriptAccumulator.fullText
+                .trimmingCharacters(in: .whitespacesAndNewlines)
         }
         return stableTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -868,20 +920,16 @@ final class VoiceCaptureCoordinator {
         sessionGeneration += 1
         resetBuffers()
         guidance = .empty
-        activeLocalGuidanceKey = ""
-        hasModelGuidance = false
-        lastModelGuidanceRequestAt = .distantPast
         supplementalTask?.cancel()
         supplementalTask = nil
-        pendingModelTranscript = nil
-        pendingModelLocalGuidance = nil
-        pendingModelLocalGuidanceKey = ""
+        nextSentenceTranscriptKey = ""
+        lastValidNextSentence = ""
         draftTranscript = ""
         optimizedTranscript = ""
         replacementMessage = ""
         statusMessage = ""
-        liveCommittedText = ""
         liveSessionText = ""
+        transcriptAccumulator.reset()
         liveRecognitionAvailable = false
         liveQueue.removeAll()
         liveWorkerRunning = false

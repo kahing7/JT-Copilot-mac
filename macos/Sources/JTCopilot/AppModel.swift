@@ -91,6 +91,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var liveTranscript = ""
     @Published private(set) var sessionStatus = ""
     @Published private(set) var nextSentence = ""
+    @Published private(set) var nextSentenceHistory: [String] = []
     @Published private(set) var optimizedTranscript = ""
     @Published private(set) var replacementMessage = ""
     @Published private(set) var frameworkItems: [String] = []
@@ -264,6 +265,23 @@ final class AppModel: ObservableObject {
 
     func dismissGuidance() {
         isGuidanceVisible = false
+    }
+
+    func endGuidanceSession() {
+        if isProcessing {
+            isGuidanceVisible = true
+            return
+        }
+
+        guard isRecording else {
+            isGuidanceVisible = false
+            return
+        }
+
+        isGuidanceVisible = true
+        Task {
+            await coordinator.finish()
+        }
     }
 
     func saveOrbOrigin(x: CGFloat, y: CGFloat) {
@@ -499,6 +517,7 @@ final class AppModel: ObservableObject {
         liveTranscript = update.stableTranscript
         sessionStatus = update.statusText
         nextSentence = update.guidance.nextSentence
+        nextSentenceHistory = update.guidance.nextSentenceHistory
         detectedTemplateLabel = update.guidance.template == .auto && selectedDocumentTemplate != nil
             ? selectedDocumentTemplate?.displayName ?? "自动识别"
             : DocumentTemplateCatalog.displayName(for: update.guidance.template)

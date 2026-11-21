@@ -4,189 +4,358 @@ import JTCopilotCore
 
 struct GuidanceView: View {
     @ObservedObject var model: AppModel
-    @State private var directionsExpanded = true
+    var reduceTransparency: Bool? = nil
+
+    @Environment(\.accessibilityReduceTransparency) private var systemReduceTransparency
+    @State private var directionsExpanded = false
+
+    private var shouldReduceTransparency: Bool {
+        reduceTransparency ?? systemReduceTransparency
+    }
+
+    private var tokens: GlassTokens {
+        GlassTokens(
+            colorScheme: .dark,
+            reduceTransparency: shouldReduceTransparency,
+            opacityScale: model.guidanceOpacityScale
+        )
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
+        GlassPanel(
+            reduceTransparency: shouldReduceTransparency,
+            opacityScale: model.guidanceOpacityScale,
+            isPresented: model.isGuidanceVisible,
+            colorScheme: .dark
+        ) {
+            VStack(spacing: GlassMetrics.moduleGap) {
+                header
 
-            Rectangle()
-                .fill(Theme.border.opacity(0.65))
-                .frame(height: 1)
+                HStack(spacing: GlassMetrics.moduleGap) {
+                    guidanceColumn
+                        .frame(width: 260)
 
-            HStack(alignment: .top, spacing: 12) {
-                guidanceColumn
-                    .frame(width: 270)
+                    frameworkColumn
+                        .frame(width: 230)
 
-                verticalDivider
-
-                frameworkColumn
-                    .frame(width: 210)
-
-                verticalDivider
-
-                resultColumn
-                    .frame(maxWidth: .infinity)
+                    resultColumn
+                        .frame(maxWidth: .infinity)
+                }
+                .frame(maxHeight: .infinity)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .padding(.bottom, 12)
-            .frame(maxHeight: .infinity, alignment: .top)
         }
-        .frame(width: 820, height: 260)
-        .background(
-            FrostedBackground(
-                cornerRadius: 14,
-                tint: Theme.panel.opacity(0.45 * model.guidanceOpacityScale),
-                material: .underWindowBackground,
-                blurOpacity: 0.2
-            )
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .frame(width: GlassMetrics.panelWidth, height: GlassMetrics.panelHeight)
         .preferredColorScheme(.dark)
     }
 
     private var header: some View {
         ZStack(alignment: .trailing) {
-            HStack(spacing: 9) {
-                Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Theme.textSecondary)
+            HStack(spacing: GlassMetrics.iconTextSpacing) {
+                IconChip(systemName: "waveform", tint: GlassIconTint.blue)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("表达引导")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Theme.textPrimary)
-                    Text(model.apiKeyStatus == "已安全配置"
-                         ? (model.sessionStatus.isEmpty ? "等待开始" : model.sessionStatus)
-                         : "本地引导 · 未配置智谱 Key")
-                        .font(.system(size: 11))
-                        .foregroundStyle(model.apiKeyStatus == "已安全配置"
-                                         ? Theme.textSecondary
-                                         : Theme.warning)
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 6) {
+                        Text("表达引导")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(tokens.textPrimary)
+
+                        if model.isProcessing {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .tint(GlassIconTint.blue)
+                        }
+                    }
+
+                    Text(statusText)
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(statusColor)
                         .lineLimit(1)
                 }
 
                 Spacer()
-                Color.clear.frame(width: 42)
+                Color.clear.frame(width: 34)
             }
-            .padding(.leading, 16)
-            .padding(.top, 5)
+            .padding(.leading, 4)
             .allowsHitTesting(false)
 
             WindowDragArea(usesNativeWindowDrag: true)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            CloseIconButton {
-                model.dismissGuidance()
+            CloseIconButton(helpText: model.isRecording ? "结束引导并优化全文" : "关闭") {
+                model.endGuidanceSession()
             }
-            .padding(.trailing, 10)
+            .padding(.trailing, 2)
         }
-        .frame(height: 42)
+        .frame(height: 32)
     }
 
     private var guidanceColumn: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            nextSentenceCard
+        VStack(spacing: GlassMetrics.moduleGap) {
+            GlassModule {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: GlassMetrics.iconTextSpacing) {
+                        IconChip(systemName: "sparkles", tint: GlassIconTint.blue)
+                        Text("下一句")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(tokens.textPrimary)
 
-            ScrollView {
-                directionsDisclosure
-                    .padding(.trailing, 4)
+                        Spacer()
+
+                        if !guidanceHistory.isEmpty {
+                            Text("\(guidanceHistory.count) 条历史")
+                                .font(.system(size: 10.5, weight: .regular))
+                                .foregroundStyle(tokens.textTertiary)
+                        }
+                    }
+
+                    guidanceHistoryScroll
+                }
             }
-            .scrollIndicators(.hidden)
-            .frame(maxHeight: .infinity, alignment: .top)
+            .frame(height: 108)
+
+            GlassModule {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: GlassMetrics.iconTextSpacing) {
+                        IconChip(systemName: "circle.lefthalf.filled", tint: GlassIconTint.orange)
+                        Text("面板浓度")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(tokens.textPrimary)
+                        Spacer()
+                        Text("\(Int(model.guidanceOpacityPercent.rounded()))%")
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundStyle(tokens.textSecondary)
+                    }
+
+                    SliderBar(
+                        value: $model.guidanceOpacityPercent,
+                        tint: GlassIconTint.orange,
+                        accessibilityLabel: "引导面板浓度"
+                    )
+                }
+            }
+            .frame(height: GlassMetrics.sliderModuleHeight)
         }
-        .frame(maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var guidanceHistoryScroll: some View {
+        let history = guidanceHistory
+        let current = model.nextSentence.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 7) {
+                    if history.isEmpty && current.isEmpty {
+                        Text("等待引导")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(tokens.textTertiary)
+                            .id("guidance-empty")
+                    }
+
+                    ForEach(Array(history.enumerated()), id: \.offset) { index, sentence in
+                        HStack(alignment: .top, spacing: 7) {
+                            Circle()
+                                .fill(tokens.textTertiary)
+                                .frame(width: 4, height: 4)
+                                .padding(.top, 6)
+
+                            Text(sentence)
+                                .font(.system(size: 11, weight: .regular))
+                                .lineSpacing(2)
+                                .foregroundStyle(tokens.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .id("guidance-history-\(index)")
+                    }
+
+                    if !current.isEmpty {
+                        HStack(alignment: .top, spacing: 7) {
+                            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                                .fill(GlassIconTint.blue)
+                                .frame(width: 3)
+
+                            Text(current)
+                                .font(.system(size: 13, weight: .semibold))
+                                .lineSpacing(3)
+                                .foregroundStyle(tokens.textPrimary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .id("guidance-current")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .padding(.trailing, 4)
+            }
+            .scrollIndicators(.visible)
+            .onAppear {
+                scrollGuidanceHistoryToLatest(proxy)
+            }
+            .onChange(of: history.last) { _, _ in
+                scrollGuidanceHistoryToLatest(proxy)
+            }
+            .onChange(of: current.isEmpty) { wasEmpty, isEmpty in
+                if wasEmpty && !isEmpty {
+                    scrollGuidanceHistoryToLatest(proxy)
+                }
+            }
+        }
+    }
+
+    private var guidanceHistory: [String] {
+        GuidanceHistory.visibleHistory(
+            model.nextSentenceHistory,
+            current: model.nextSentence
+        )
+    }
+
+    private func scrollGuidanceHistoryToLatest(_ proxy: ScrollViewProxy) {
+        DispatchQueue.main.async {
+            let target = model.nextSentence
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty
+                ? "guidance-empty"
+                : "guidance-current"
+            proxy.scrollTo(target, anchor: .bottom)
+        }
     }
 
     private var frameworkColumn: some View {
-        ScrollView {
+        GlassModule {
             VStack(alignment: .leading, spacing: 0) {
-                SectionLabel(text: "文档模板")
-                templatePicker
+                HStack(spacing: GlassMetrics.iconTextSpacing) {
+                    IconChip(systemName: "doc.text.fill", tint: GlassIconTint.green)
 
-                HStack(spacing: 0) {
-                    Text("当前识别：")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Theme.textTertiary)
-                    Text(model.detectedTemplateLabel)
-                        .font(.system(size: 11))
-                        .foregroundStyle(Theme.accent)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("写作框架")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(tokens.textPrimary)
+                        Text(model.detectedTemplateLabel)
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundStyle(GlassIconTint.green)
+                    }
+
+                    Spacer()
+                    templatePicker
                 }
-                .padding(.top, 7)
 
-                DividerLine()
-                    .padding(.vertical, 14)
+                Rectangle()
+                    .fill(tokens.moduleBorder)
+                    .frame(height: 0.5)
+                    .padding(.vertical, 8)
 
-                Text("当前框架")
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundStyle(Theme.textPrimary)
-                frameworkList
-                    .padding(.top, 6)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 10) {
+                        frameworkList
+                        directionToggle
+
+                        if directionsExpanded {
+                            directionList
+                            missingPoints
+                        }
+                    }
+                    .padding(.trailing, 3)
+                }
+                .scrollIndicators(.hidden)
             }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .scrollIndicators(.hidden)
-        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     private var resultColumn: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SectionLabel(text: "实时转录")
+        GlassModule {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: GlassMetrics.iconTextSpacing) {
+                    IconChip(systemName: "captions.bubble.fill", tint: GlassIconTint.gray)
+                    Text("实时转录")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(tokens.textPrimary)
 
-            liveTranscriptPanel
-                .padding(.top, 6)
+                    Spacer()
 
-            DividerLine()
-                .padding(.vertical, 8)
-
-            HStack(alignment: .center, spacing: 8) {
-                SectionLabel(text: model.replacementMessage.isEmpty ? "优化结果" : model.replacementMessage)
-                Spacer()
-                Button("复制结果") {
-                    model.copyOptimizedText()
+                    if model.isProcessing {
+                        HStack(spacing: 5) {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .tint(GlassIconTint.blue)
+                            Text("优化中")
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundStyle(tokens.textSecondary)
+                        }
+                    }
                 }
-                .buttonStyle(CommandButtonStyle())
-                .disabled(model.optimizedTranscript.isEmpty && model.liveTranscript.isEmpty)
-            }
 
-            ScrollView {
-                Text(model.optimizedTranscript.isEmpty
-                     ? "会话结束后，智谱会在这里给出优化后的全文。"
-                     : model.optimizedTranscript)
-                    .font(.system(size: 12))
-                    .lineSpacing(4)
-                    .foregroundStyle(model.optimizedTranscript.isEmpty ? Theme.textTertiary : Theme.textPrimary)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .textSelection(.enabled)
-                    .padding(.top, 6)
-                    .padding(.trailing, 4)
+                Text(model.liveTranscript.isEmpty ? "开始口述后，识别文字会显示在这里。" : model.liveTranscript)
+                    .font(.system(size: 12, weight: .regular))
+                    .lineSpacing(3)
+                    .foregroundStyle(
+                        model.liveTranscript.isEmpty ? tokens.textTertiary : tokens.textPrimary
+                    )
+                    .lineLimit(3)
+                    .frame(height: 42, alignment: .topLeading)
+
+                Rectangle()
+                    .fill(tokens.moduleBorder)
+                    .frame(height: 0.5)
+                    .padding(.vertical, 2)
+
+                HStack(spacing: 8) {
+                    Text(model.isProcessing
+                         ? "正在优化全文"
+                         : (model.replacementMessage.isEmpty ? "优化结果" : model.replacementMessage))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(tokens.textSecondary)
+                        .lineLimit(1)
+
+                    Spacer()
+
+                    if !model.isProcessing {
+                        Button {
+                            model.copyOptimizedText()
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(tokens.textSecondary)
+                                .frame(width: 22, height: 22)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(model.optimizedTranscript.isEmpty && model.liveTranscript.isEmpty)
+                        .help("复制优化结果")
+                    }
+                }
+
+                ScrollView {
+                    Text(model.optimizedTranscript.isEmpty
+                         ? (model.isProcessing
+                            ? "正在检查重复表达和逻辑衔接…"
+                            : "会话结束后，优化后的全文会显示在这里。")
+                         : model.optimizedTranscript)
+                        .font(.system(size: 12, weight: .regular))
+                        .lineSpacing(3)
+                        .foregroundStyle(
+                            model.optimizedTranscript.isEmpty
+                                ? tokens.textTertiary
+                                : tokens.textPrimary
+                        )
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .textSelection(.enabled)
+                        .padding(.trailing, 3)
+                }
+                .scrollIndicators(.hidden)
             }
-            .scrollIndicators(.hidden)
-            .frame(maxHeight: .infinity, alignment: .top)
         }
-        .frame(maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private var liveTranscriptPanel: some View {
-        Text(model.liveTranscript.isEmpty ? "开始口述后，识别文字会显示在这里。" : model.liveTranscript)
-            .font(.system(size: 13))
-            .lineSpacing(4)
-            .foregroundStyle(model.liveTranscript.isEmpty ? Theme.textTertiary : Theme.textPrimary)
-            .frame(maxWidth: .infinity, minHeight: 52, maxHeight: 52, alignment: .topLeading)
-            .lineLimit(3)
-            .padding(9)
-            .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Theme.panelRaised.opacity(0.9 * model.guidanceOpacityScale))
-            )
+    private var statusText: String {
+        guard model.apiKeyStatus == "已安全配置" else {
+            return "本地引导 · 未配置智谱 Key"
+        }
+        if model.isProcessing {
+            return "正在优化全文，请稍候…"
+        }
+        return model.sessionStatus.isEmpty ? "等待开始" : model.sessionStatus
     }
 
-    private var verticalDivider: some View {
-        Rectangle()
-            .fill(Theme.border.opacity(0.65))
-            .frame(width: 1)
-            .frame(maxHeight: .infinity)
+    private var statusColor: Color {
+        model.apiKeyStatus == "已安全配置" ? tokens.textSecondary : Theme.warning
     }
 
     private var templatePicker: some View {
@@ -197,48 +366,49 @@ struct GuidanceView: View {
                 }
             }
         } label: {
-            HStack {
-                Text(model.selectedDocumentTemplate?.displayName ?? "自动识别")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.textPrimary)
-                Spacer()
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(Theme.textSecondary)
+            HStack(spacing: 4) {
+                Text(model.selectedDocumentTemplate?.displayName ?? "自动")
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
             }
-            .padding(.horizontal, 10)
-            .frame(height: 34)
+            .foregroundStyle(tokens.textSecondary)
+            .padding(.horizontal, 8)
+            .frame(height: 24)
             .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Theme.panelRaised.opacity(0.86 * model.guidanceOpacityScale))
+                Capsule()
+                    .fill(tokens.moduleTint)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(Theme.border, lineWidth: 1)
+                Capsule()
+                    .strokeBorder(tokens.moduleBorder, lineWidth: 0.5)
             )
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .padding(.top, 8)
+        .help("切换文档模板")
     }
 
     private var frameworkList: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 6) {
             if model.frameworkItems.isEmpty {
                 Text("开始口述后自动生成结构框架。")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.textTertiary)
+                    .font(.system(size: 12, weight: .regular))
+                    .lineSpacing(3)
+                    .foregroundStyle(tokens.textTertiary)
             } else {
                 ForEach(model.frameworkItems.indices, id: \.self) { index in
                     HStack(alignment: .top, spacing: 7) {
                         Circle()
-                            .fill(Theme.accent)
-                            .frame(width: 4, height: 4)
-                            .padding(.top, 7)
+                            .fill(GlassIconTint.green)
+                            .frame(width: 5, height: 5)
+                            .padding(.top, 6)
+
                         Text(model.frameworkItems[index])
-                            .font(.system(size: 12.5))
+                            .font(.system(size: 12, weight: .regular))
                             .lineSpacing(3)
-                            .foregroundStyle(Theme.textPrimary)
+                            .foregroundStyle(tokens.textPrimary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -246,89 +416,66 @@ struct GuidanceView: View {
         }
     }
 
-    private var nextSentenceCard: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("下一句")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Theme.accent)
-            Text(model.nextSentence.isEmpty ? "等待引导" : model.nextSentence)
-                .font(.system(size: 14, weight: .semibold))
-                .lineSpacing(4)
-                .foregroundStyle(Theme.textPrimary)
-                .lineLimit(3)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                .fill(Theme.panelRaised.opacity(0.92 * model.guidanceOpacityScale))
-        )
-        .overlay(alignment: .leading) {
-            Rectangle()
-                .fill(Theme.accentStrong)
-                .frame(width: 2)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
-    }
-
-    private var directionsDisclosure: some View {
-        DisclosureGroup(isExpanded: $directionsExpanded) {
-            VStack(alignment: .leading, spacing: 0) {
-                directionList
-
-                if !model.missingPointItems.isEmpty {
-                    Text("可能遗漏")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Theme.warning)
-                        .padding(.top, 14)
-                    missingList
-                        .padding(.top, 8)
-                }
+    private var directionToggle: some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.16)) {
+                directionsExpanded.toggle()
             }
-            .padding(.top, 8)
         } label: {
-            HStack(spacing: 8) {
-                Text("可展开方向")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Theme.textPrimary)
+            HStack(spacing: 6) {
+                Text("写作方向")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(tokens.textSecondary)
                 Text("\(model.directionItems.count) 条")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.textTertiary)
+                    .font(.system(size: 10.5, weight: .regular))
+                    .foregroundStyle(tokens.textTertiary)
                 Spacer()
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(tokens.textTertiary)
+                    .rotationEffect(.degrees(directionsExpanded ? 180 : 0))
             }
             .contentShape(Rectangle())
         }
-        .tint(Theme.textSecondary)
+        .buttonStyle(.plain)
+        .help(directionsExpanded ? "收起写作方向" : "展开写作方向")
     }
 
     private var directionList: some View {
         VStack(alignment: .leading, spacing: 6) {
             if model.directionItems.isEmpty {
                 Text("识别到内容后会给出可展开的写作方向。")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.textTertiary)
+                    .font(.system(size: 11.5, weight: .regular))
+                    .lineSpacing(3)
+                    .foregroundStyle(tokens.textTertiary)
             } else {
                 ForEach(model.directionItems.indices, id: \.self) { index in
                     Text(model.directionItems[index])
-                        .font(.system(size: 12))
+                        .font(.system(size: 11.5, weight: .regular))
                         .lineSpacing(3)
-                        .foregroundStyle(Theme.textSecondary)
+                        .foregroundStyle(tokens.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
     }
 
-    private var missingList: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(model.missingPointItems.indices, id: \.self) { index in
-                Text(model.missingPointItems[index])
-                    .font(.system(size: 12))
-                    .lineSpacing(3)
-                    .foregroundStyle(Theme.warning)
-                    .fixedSize(horizontal: false, vertical: true)
+    private var missingPoints: some View {
+        Group {
+            if !model.missingPointItems.isEmpty {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("可能遗漏")
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(GlassIconTint.orange)
+
+                    ForEach(model.missingPointItems.indices, id: \.self) { index in
+                        Text(model.missingPointItems[index])
+                            .font(.system(size: 11.5, weight: .regular))
+                            .lineSpacing(3)
+                            .foregroundStyle(Theme.warning)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
         }
     }

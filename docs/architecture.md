@@ -173,16 +173,25 @@ fallback, but GLM now owns the primary writing decision:
 
 - infer the document type from the latest transcript instead of requiring the
   user to choose a template first;
-- select the matching framework, including the new meeting-minutes template;
+- select the matching framework; meeting minutes use `会议主题 → 讨论要点 →
+  结论与决策 → 行动项 → 待确认事项`, while time, location, and attendees remain
+  secondary missing-point checks;
 - return the complete framework and the next sentence to speak;
 - replace the fallback prompt only when the response still matches the current
   local document stage.
 
-Model requests are coalesced and throttled. Final speech results always request
-an update, while partial results may refresh the model view at most once every
-two seconds. A single worker owns all requests: a request in flight is never
-cancelled by the next transcript, and only the latest pending transcript is sent
-next. A response may update only the local framework stage that produced it.
+Model requests are triggered at sentence boundaries: after approximately 550 ms
+of silence, after the maximum segment length, or when Apple Speech emits a final
+result. Partial hypotheses update the local fallback immediately but do not
+request the model. The request includes the just-completed sentence, the full
+transcript, and the current local framework.
+
+A single worker owns all requests: a request in flight is never cancelled by the
+next sentence, and only the latest pending transcript is sent next. A response
+may update only the local framework stage that produced it. Guidance responses
+accept either JSON arrays or delimited strings, and unwrap `answer` or `data`
+objects, so a schema variation does not discard an otherwise usable next
+sentence.
 
 If no Zhipu key is available, the guidance header explicitly says that local
 guidance is active. Local guidance continues to advance from transcript signals,
@@ -197,3 +206,44 @@ The title bar uses an AppKit drag probe above non-interactive SwiftUI header
 content and delegates to native `NSWindow.performDrag(with:)`. A diagnostic hit
 test confirms that the top-center header resolves to the drag probe rather than
 the SwiftUI hosting view.
+
+## V0.6: Full-Text Cleanup And Loading State
+
+At session completion, `glm-4.6` now explicitly removes spoken fillers,
+self-repetition, duplicated clauses, false starts, and clearly incoherent
+phrasing before using the result for in-place replacement. It may adjust
+sentence order and transitions but may not add facts or expand the content.
+
+While this pass runs, the guidance panel replaces the copy action with a small
+progress indicator and the message "正在检查重复表达和逻辑衔接…". Key guidance
+text uses white/high-contrast foregrounds so the next sentence, expandable
+directions, and current framework remain readable over the translucent panel.
+
+Closing the guidance panel while recording is an explicit session-end action:
+it stops capture, keeps the panel visible in the processing state, and starts
+full-text optimization exactly once. It must not merely hide the panel. Model
+optimization is never called from sentence-boundary guidance updates.
+
+Apple Speech can restart its recognition request without emitting a final result.
+The macOS coordinator therefore keeps a `SessionTranscriptAccumulator` with
+separate completed and current hypothesis text. At pauses and session end, the
+current hypothesis is committed before optimization. Cumulative hypotheses that
+already contain committed text are stripped rather than appended twice. This
+prevents a later sentence from replacing the earlier document when no final event
+was delivered.
+
+## V0.7: Freeform Streaming Next Sentence On macOS
+
+The macOS guidance path now follows the reference implementation used by the
+Windows project:
+
+- fixed template-stage prompts no longer determine the next sentence;
+- every transcript change schedules a 180 ms debounced request;
+- the full current transcript is sent directly to `glm-4.5-air` with `stream=true`;
+- the first streamed text immediately replaces the current suggestion;
+- a newer transcript cancels the stale stream and cannot overwrite newer text;
+- framework, directions, and missing points are requested separately after the
+  next sentence completes, so they never block guidance.
+
+The previous valid suggestion remains visible until the replacement actually
+starts streaming. Replaced suggestions are retained in session-scoped history.

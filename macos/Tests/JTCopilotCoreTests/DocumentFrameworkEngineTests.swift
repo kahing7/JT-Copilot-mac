@@ -38,7 +38,7 @@ final class DocumentFrameworkEngineTests: XCTestCase {
         let result = engine.build(transcript: transcript, template: .auto)
 
         XCTAssertEqual(DocumentTemplate.meetingMinutes, result.template)
-        XCTAssertEqual("说明这次会议要解决什么问题", result.guidance.nextSentence)
+        XCTAssertEqual("各部门提出的核心需求是……，主要原因是……。", result.guidance.nextSentence)
     }
 
     func testMeetingGuidanceAdvancesAfterGoalIsSpoken() {
@@ -46,6 +46,20 @@ final class DocumentFrameworkEngineTests: XCTestCase {
         let result = engine.build(transcript: transcript, template: .auto)
 
         XCTAssertEqual(DocumentTemplate.meetingMinutes, result.template)
-        XCTAssertEqual("按议题梳理讨论的关键观点", result.guidance.nextSentence)
+        XCTAssertEqual("各部门提出的核心需求是……，主要原因是……。", result.guidance.nextSentence)
+    }
+
+    func testMeetingDiscussionStaysCurrentUntilDecisionIsSpoken() {
+        let transcript = "会议讨论市场部和研发部的预算需求，大家认为资源分配冲突需要解决"
+        let result = engine.build(transcript: transcript, template: .meetingMinutes)
+
+        XCTAssertEqual("各部门提出的核心需求是……，主要原因是……。", result.guidance.nextSentence)
+    }
+
+    func testMeetingMovesToActionItemsAfterDecision() {
+        let transcript = "会议形成的结论是明年预算由财务统一汇总"
+        let result = engine.build(transcript: transcript, template: .meetingMinutes)
+
+        XCTAssertEqual("行动项为……，由……负责，在……前完成。", result.guidance.nextSentence)
     }
 }

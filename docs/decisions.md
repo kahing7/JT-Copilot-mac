@@ -182,10 +182,10 @@
 
 - Status: Accepted for macOS
 - Date: 2026-11-21
-- Decision: On each throttled live-guidance update, send the latest transcript to
-  GLM and require it to infer the document type first, then return the matching
-  framework and next-sentence prompt. Keep the local engine only as an immediate
-  fallback.
+- Decision: At each detected sentence boundary, send the just-completed sentence,
+  full transcript, and current local framework to GLM. Require it to infer the
+  document type first, then return the matching framework and next-sentence
+  prompt. Keep the local engine only as an immediate fallback.
 - Reason: Users switch between project plans, meeting minutes, reports, and other
   document types without declaring the type in advance. A keyword stage machine
   can keep a stale template active and cannot adapt the prompt to current content.
@@ -194,7 +194,10 @@
   keep the panel usable while a response is pending or unavailable.
 - Follow-up: Guidance requests run through one serial worker instead of cancelling
   the in-flight request whenever speech changes. Missing keys are shown as local
-  mode in the panel rather than silently pretending that GLM was used.
+  mode in the panel rather than silently pretending that GLM was used. Response
+  decoding accepts arrays, delimited strings, and `answer`/`data` wrappers for
+  framework-like fields. Meeting minutes prioritize business discussion over
+  time/location metadata.
 
 ## ADR-021: Keep The Guidance Surface Compact And Opacity-Coupled
 
@@ -216,3 +219,69 @@
 - Reason: The borderless settings panel did not move reliably with local SwiftUI
   translation values. Screen-coordinate deltas match the existing guidance-window
   behavior, while native drag prevents tracking loss on non-activating panels.
+
+## ADR-023: Treat Full-Text Cleanup As Repetition And Logic Repair
+
+- Status: Accepted for macOS
+- Date: 2026-11-21
+- Decision: During final consolidation, remove filler words, self-repetition,
+  duplicated clauses, false starts, and clearly incoherent phrasing while
+  preserving facts, names, numbers, and business conclusions. Show an explicit
+  loading state in the guidance panel while the model runs.
+- Reason: Speech transcripts frequently contain phrases such as "那个那个",
+  repeated starts, and restated clauses. Punctuation-only cleanup leaves the
+  final document visibly spoken and hard to use.
+
+## ADR-024: Closing Guidance Ends The Session Before Optimization
+
+- Status: Accepted for macOS
+- Date: 2026-11-21
+- Decision: While recording, the guidance close button ends the complete session,
+  keeps the panel visible during processing, and then runs one full-transcript
+  optimization. Sentence-boundary model calls are guidance only and never optimize
+  or replace accumulated text.
+- Reason: Hiding the panel without ending the session leaves the user unsure
+  whether optimization ran, while per-sentence optimization can replace only the
+  latest text and discard the accumulated document context.
+
+## ADR-025: Accumulate Apple Speech Hypotheses Across Request Restarts
+
+- Status: Accepted for macOS
+- Date: 2026-11-21
+- Decision: Keep completed session text separate from the current Apple Speech
+  hypothesis. Commit the current hypothesis at silence boundaries and again when
+  finishing, and use the accumulated full text for optimization and replacement.
+- Reason: Apple Speech frequently starts a new recognition request without
+  emitting `isFinal`. Treating each new hypothesis as the session transcript made
+  `finish` receive only the latest few characters even though several audio
+  segments had already been recognized.
+
+## ADR-026: Use Freeform Streaming For Next-Sentence Guidance
+
+- Status: Accepted for macOS
+- Date: 2026-11-21
+- Decision: Replace template-driven next-sentence generation with a 180 ms
+  debounced, cancelable freeform stream from the full session transcript.
+  Generate framework and checklists in a separate follow-up request.
+- Reason: The reference implementation produces a natural next sentence
+  immediately and works across logs, reviews, meeting notes, emails, and other
+  open-ended writing. Fixed stage prompts made the assistant sound like a template
+  and could recommend the wrong section.
+- Tradeoff: Network latency affects the first visible token, so the previous valid
+  suggestion remains visible until the new stream begins.
+
+## ADR-027: Preserve Guidance History And Use Native Continuous Controls
+
+- Status: Accepted for macOS
+- Date: 2026-11-21
+- Decision: Record the last valid next-sentence guidance before a new streaming
+  request replaces it, expose the deduplicated history in a scrollable area, and
+  use an AppKit-backed continuous slider for guidance opacity. Disable
+  window-background movement so only the title drag area moves the panel.
+- Reason: SwiftUI drag gestures inside a non-activating borderless panel could
+  receive the initial click without reliable continuous drag updates, and
+  overwriting the current suggestion during streaming made earlier guidance
+  disappear before the user finished speaking it.
+- Verification: A synthesized AppKit mouse sequence confirms continuous value
+  changes, history append/dedupe/limit behavior has focused unit tests, and the
+  built app leaves zero `Software Cursor` windows on screen.

@@ -98,6 +98,7 @@ public struct AudioDeviceDescriptor: Identifiable, Hashable, Sendable {
 public struct WritingGuidance: Equatable, Sendable {
     public var framework: [String]
     public var nextSentence: String
+    public var nextSentenceHistory: [String]
     public var directions: [String]
     public var missingPoints: [String]
     public var template: DocumentTemplate
@@ -105,12 +106,14 @@ public struct WritingGuidance: Equatable, Sendable {
     public init(
         framework: [String] = [],
         nextSentence: String = "",
+        nextSentenceHistory: [String] = [],
         directions: [String] = [],
         missingPoints: [String] = [],
         template: DocumentTemplate = .auto
     ) {
         self.framework = framework
         self.nextSentence = nextSentence
+        self.nextSentenceHistory = nextSentenceHistory
         self.directions = directions
         self.missingPoints = missingPoints
         self.template = template

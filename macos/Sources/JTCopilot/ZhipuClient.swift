@@ -157,7 +157,7 @@ final class ZhipuSpeechRecognitionProvider {
 
 final class ZhipuWritingModelProvider {
     private let endpoint = URL(string: "https://open.bigmodel.cn/api/paas/v4/chat/completions")!
-    private let fastModel = "glm-4.5-air"
+    private let guidanceModel = "glm-4.5-air"
     private let editingModel = "glm-4.6"
     private let apiKeyStore: ZhipuApiKeyStore
     private let session: URLSession
@@ -174,41 +174,102 @@ final class ZhipuWritingModelProvider {
         apiKeyStore.hasApiKey
     }
 
-    func analyze(transcript: String, previousGuidance: WritingGuidance?) async throws -> WritingGuidance {
-        let previousFramework = previousGuidance?.framework.joined(separator: "；") ?? "无"
-        let previousTemplate = previousGuidance.map {
-            DocumentTemplateCatalog.displayName(for: $0.template)
-        } ?? "自动识别"
-        let content = try await completeJSON(
-            system: "你是实时中文口述写作教练。只输出JSON，不要解释，不要输出思考过程。"
-                + "第一步必须根据当前全文判断用户正在写什么文档，不能要求用户先声明类型。"
-                + "可选模板：project_management（项目管理文档）、meeting_minutes（会议纪要）、"
-                + "prd（产品需求文档）、weekly_report（工作周报）、solution（方案文档）、general（通用写作）。"
-                + "第二步按所选文档的标准框架继续写作，框架示例：项目管理为项目背景、目标、范围、里程碑、职责、风险、交付验收；"
-                + "会议纪要为会议信息、会议目标、讨论要点、结论决策、行动项、待确认事项；"
-                + "PRD为用户场景、目标指标、功能范围、流程交互、需求细节、验收；"
-                + "周报为进展、结果、问题风险、下周计划、协作依赖；方案为背景、目标约束、总体方案、关键设计、实施、风险、验收。"
-                + "第三步结合全文判断哪些栏目已写、当前在哪个栏目，并给出用户现在可以直接接着说的下一句提示。"
-                + "已有框架只用于保持连续性；如果最新内容表明文档类型不对，必须立即切换。"
-                + "输出字段：template字符串、framework字符串数组、next_sentence字符串、directions字符串数组、missing_points字符串数组。"
-                + "framework使用所选模板的完整栏目并在当前栏目后标“当前”；next_sentence要具体点明下一栏和应说内容，不超过40字。",
-            user: "上次判断：\(previousTemplate)\n已有框架：\(previousFramework)\n当前全文：\(clip(transcript))",
-            maxTokens: 640,
-            model: fastModel,
-            temperature: 0.1
+    func streamNextSentence(
+        transcript: String,
+        previousNextSentence: String,
+        onTextChanged: @escaping (String) -> Void
+    ) async throws -> String {
+        guard let apiKey = apiKeyStore.apiKey() else {
+            throw ZhipuError.missingApiKey
+        }
+
+        let body = StreamChatRequest(
+            model: guidanceModel,
+            messages: [
+                ChatMessage(
+                    role: "system",
+                    content: "你是实时口述写作的接续助手。根据当前会话全文判断用户正在写什么，"
+                        + "直接写出紧接着最自然的一句中文。适用于日志、复盘、会议纪要、邮件、方案、需求、"
+                        + "笔记、说明等任何写作类型，禁止套用固定章节或管理模板。"
+                        + "只输出这一句，不加标题、解释、序号或引号；控制在80字以内；"
+                        + "可以承接未说完的意思，但不得虚构用户没有提供的事实。"
+                ),
+                ChatMessage(
+                    role: "user",
+                    content: "上一版下一句（仅用于保持衔接，可完全改写）：\(clip(previousNextSentence, maxLength: 300))"
+                        + "\n当前全文：\(clip(transcript))"
+                )
+            ],
+            temperature: 0.3,
+            stream: true,
+            maxTokens: 180,
+            thinking: Thinking(type: "disabled")
         )
 
-        let decoded = try JSONDecoder().decode(GuidanceDTO.self, from: Data(content.utf8))
-        let template = Self.template(
-            from: decoded.template,
-            fallback: previousGuidance?.template ?? .general
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (bytes, response) = try await session.bytes(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ZhipuError.invalidResponse("智谱下一句返回了无效响应。")
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw ZhipuError.invalidResponse("智谱下一句生成失败（\(httpResponse.statusCode)）。")
+        }
+
+        var accumulated = ""
+        for try await line in bytes.lines {
+            guard line.hasPrefix("data:") else { continue }
+            let payload = String(line.dropFirst(5))
+                .trimmingCharacters(in: .whitespaces)
+            guard !payload.isEmpty, payload != "[DONE]" else {
+                if payload == "[DONE]" { break }
+                continue
+            }
+            guard let delta = Self.extractStreamDelta(payload) else { continue }
+            accumulated += delta
+            let normalized = Self.normalizeNextSentence(accumulated)
+            if !normalized.isEmpty {
+                onTextChanged(normalized)
+            }
+        }
+
+        let result = Self.normalizeNextSentence(accumulated)
+        guard !result.isEmpty else {
+            throw ZhipuError.invalidResponse("智谱没有返回可用的下一句。")
+        }
+        return result
+    }
+
+    func analyzeSupplement(
+        transcript: String,
+        previousGuidance: WritingGuidance
+    ) async throws -> WritingGuidance {
+        let previousFramework = previousGuidance.framework.joined(separator: "；")
+        let content = try await completeJSON(
+            system: "你是中文口述写作分析助手。根据当前全文动态理解内容，不要套用固定文档模板。"
+                + "只输出JSON，不要解释，不要输出思考过程。"
+                + "输出字段：framework字符串数组、directions字符串数组、missing_points字符串数组。"
+                + "framework是当前内容自然形成的要点脉络；directions是接下来可展开的内容；"
+                + "missing_points是可能遗漏但确实重要的信息。每项不超过40字，不要复述全文。",
+            user: "已有动态脉络：\(previousFramework.isEmpty ? "无" : previousFramework)\n当前全文：\(clip(transcript))",
+            maxTokens: 420,
+            model: guidanceModel,
+            temperature: 0.2
+        )
+
+        let decoded = try JSONDecoder().decode(
+            GuidanceDTO.self,
+            from: Self.guidancePayload(from: content)
         )
         return WritingGuidance(
-            framework: Self.clean(decoded.framework),
-            nextSentence: decoded.nextSentence?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
-            directions: Self.clean(decoded.directions),
-            missingPoints: Self.clean(decoded.missingPoints),
-            template: template
+            framework: Self.clean(decoded.framework?.values),
+            directions: Self.clean(decoded.directions?.values),
+            missingPoints: Self.clean(decoded.missingPoints?.values),
+            template: previousGuidance.template
         )
     }
 
@@ -219,8 +280,10 @@ final class ZhipuWritingModelProvider {
 
         let content = try await completeJSON(
             system: "你是中文文字编辑。只输出JSON，不要解释，不要输出思考过程。"
-                + "只修正错别字、同音字、语法、标点、明显重复和不通顺表达，保持原意、专有名词、数字和业务结论。"
-                + "不要扩写，不要改变结构。输出字段：optimized_text字符串、changes数组。"
+                + "检查并修正错别字、同音字、语法、标点、口癖、重复词句、自我重复、语序混乱和明显逻辑不通。"
+                + "重点删除“那个那个”“嗯嗯”“就是说就是说”等口述填充，以及连续重复或前后矛盾但没有新增信息的表达。"
+                + "可以调整句子衔接和语序，但不要扩写、不要添加事实、不要改变专有名词、数字和业务结论。"
+                + "输出字段：optimized_text字符串、changes数组。"
                 + "changes数组每项包含original、corrected、type。",
             user: clip(transcript, maxLength: 24_000),
             maxTokens: 2_048,
@@ -242,8 +305,9 @@ final class ZhipuWritingModelProvider {
         let content = try await completeJSON(
             system: "你是中文文字编辑。以下内容是同一段连续口述按时间切分后产生的ASR片段，"
                 + "相邻片段可能存在重叠、重复、断句和同音字错误。"
-                + "请将这些片段合并为一段完整自然的文字，去除重复，修正错别字、语法和标点。"
-                + "只做必要修改，保持原意，保留专有名词、数字和业务结论，不得扩写或添加事实。"
+                + "请将这些片段合并为一段完整自然的文字，去除相邻片段重复、口癖、自我重复和语序混乱。"
+                + "重点删除“那个那个”“嗯嗯”“就是说就是说”等口述填充，修复明显逻辑不通，但不得扩写或添加事实。"
+                + "保持原意，保留专有名词、数字和业务结论。"
                 + "只输出JSON，不要解释，不要输出思考过程。输出字段：optimized_text字符串、changes数组。"
                 + "changes数组每项包含original、corrected、type。",
             user: segmentText,
@@ -331,30 +395,28 @@ final class ZhipuWritingModelProvider {
         return result
     }
 
-    private static func template(
-        from value: String?,
-        fallback: DocumentTemplate
-    ) -> DocumentTemplate {
-        let normalized = value?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased() ?? ""
-
-        switch normalized {
-        case "project_management", "project-management", "projectmanagement", "项目管理文档", "项目管理":
-            return .projectManagement
-        case "meeting_minutes", "meeting-minutes", "meetingminutes", "会议纪要", "会议记录":
-            return .meetingMinutes
-        case "prd", "产品需求文档":
-            return .prd
-        case "weekly_report", "weekly-report", "weeklyreport", "工作周报", "周报":
-            return .weeklyReport
-        case "solution", "方案文档", "技术方案":
-            return .solution
-        case "general", "通用写作":
-            return .general
-        default:
-            return fallback
+    private static func extractStreamDelta(_ payload: String) -> String? {
+        guard let data = payload.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let choices = object["choices"] as? [[String: Any]],
+              let delta = choices.first?["delta"] as? [String: Any] else {
+            return nil
         }
+        return delta["content"] as? String
+    }
+
+    private static func normalizeNextSentence(_ value: String) -> String {
+        var text = value
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        for prefix in ["下一句：", "下一句:", "建议：", "建议:"] where text.hasPrefix(prefix) {
+            text = String(text.dropFirst(prefix.count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        text = text.trimmingCharacters(in: CharacterSet(charactersIn: "“”\"'"))
+        return text.count <= 120 ? text : String(text.prefix(120))
     }
 
     private static func extractJSONObject(_ content: String) -> String {
@@ -365,6 +427,24 @@ final class ZhipuWritingModelProvider {
         }
 
         return String(content[first...last])
+    }
+
+    private static func guidancePayload(from content: String) -> Data {
+        let rootData = Data(content.utf8)
+        guard let root = try? JSONSerialization.jsonObject(with: rootData) as? [String: Any] else {
+            return rootData
+        }
+
+        if let answer = root["answer"] as? [String: Any],
+           let answerData = try? JSONSerialization.data(withJSONObject: answer) {
+            return answerData
+        }
+        if let data = root["data"] as? [String: Any],
+           let wrappedData = try? JSONSerialization.data(withJSONObject: data) {
+            return wrappedData
+        }
+
+        return rootData
     }
 
     private static func extractErrorMessage(_ body: String) -> String {
@@ -397,6 +477,24 @@ final class ZhipuWritingModelProvider {
         }
     }
 
+    private struct StreamChatRequest: Encodable {
+        let model: String
+        let messages: [ChatMessage]
+        let temperature: Double
+        let stream: Bool
+        let maxTokens: Int
+        let thinking: Thinking
+
+        enum CodingKeys: String, CodingKey {
+            case model
+            case messages
+            case temperature
+            case stream
+            case maxTokens = "max_tokens"
+            case thinking
+        }
+    }
+
     private struct ChatMessage: Encodable {
         let role: String
         let content: String
@@ -412,17 +510,38 @@ final class ZhipuWritingModelProvider {
 
     private struct GuidanceDTO: Decodable {
         let template: String?
-        let framework: [String]?
+        let framework: StringList?
         let nextSentence: String?
-        let directions: [String]?
-        let missingPoints: [String]?
+        let answer: String?
+        let directions: StringList?
+        let missingPoints: StringList?
 
         enum CodingKeys: String, CodingKey {
             case template
             case framework
             case nextSentence = "next_sentence"
+            case answer
             case directions
             case missingPoints = "missing_points"
+        }
+    }
+
+    private struct StringList: Decodable {
+        let values: [String]
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            if let items = try? container.decode([String].self) {
+                values = items
+                return
+            }
+
+            let text = try container.decode(String.self)
+            values = text.components(
+                separatedBy: CharacterSet(charactersIn: "\n;；、|")
+            )
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
         }
     }
 

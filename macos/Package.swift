@@ -12,10 +12,18 @@ let appTargets: [Target] = [
         path: "Sources/JTCopilot"
     )
 ]
+let appTestTargets: [Target] = [
+    .testTarget(
+        name: "JTCopilotUITests",
+        dependencies: ["JTCopilot"],
+        path: "Tests/JTCopilotUITests"
+    )
+]
 #else
 // Linux 沙箱只验证与平台无关的核心逻辑，不构建 AppKit 可执行目标。
 let appProducts: [Product] = []
 let appTargets: [Target] = []
+let appTestTargets: [Target] = []
 #endif
 
 let package = Package(
@@ -29,7 +37,7 @@ let package = Package(
             name: "JTCopilotCore",
             path: "Sources/JTCopilotCore"
         )
-    ] + appTargets + [
+    ] + appTargets + appTestTargets + [
         .testTarget(
             name: "JTCopilotCoreTests",
             dependencies: ["JTCopilotCore"],
