@@ -51,14 +51,6 @@ public partial class GuidanceWindow : Window
         }
     }
 
-    private void Header_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.LeftButton == MouseButtonState.Pressed)
-        {
-            DragMove();
-        }
-    }
-
     private void CloseButton_OnClick(object sender, RoutedEventArgs e)
     {
         Close();

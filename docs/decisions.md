@@ -157,3 +157,23 @@
   selection in app settings and expose it in the guidance panel.
 - Reason: Users often dictate recurring document types and should not need to
   select the framework every session.
+
+## ADR-018: Follow The Pointer With The Guidance Panel
+
+- Status: Accepted
+- Date: 2026-11-21
+- Decision: Keep the guidance panel to the right of the pointer with a fixed gap,
+  vertically centered on the pointer, and update its position while visible.
+  Flip to the pointer's left side when the panel would leave the active monitor.
+- Reason: Guidance should stay close to the work location without covering the
+  pointer or forcing the user to manually reposition the panel for every task.
+
+## ADR-019: Configure Zhipu Credentials Outside The Settings Window
+
+- Status: Accepted
+- Date: 2026-11-21
+- Decision: Remove Zhipu API Key controls from the Settings window. Keep
+  configuration in the existing environment-variable and OS-protected secret
+  stores.
+- Reason: Credential provisioning should not be coupled to the routine
+  microphone, shortcut, and writing preferences UI.

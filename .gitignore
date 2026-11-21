@@ -483,3 +483,12 @@ $RECYCLE.BIN/
 
 # Local verification and publish outputs
 artifacts/
+
+# Local credentials and signing material
+.env.*
+!.env.example
+*.pem
+*.key
+*.p8
+*.p12
+*.mobileprovision

@@ -21,11 +21,17 @@ public partial class MainWindow : Window
     private const int WsExNoActivate = 0x08000000;
     private const int WmMouseActivate = 0x0021;
     private const int MaNoActivate = 3;
+    private const uint MonitorDefaultToNearest = 2;
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoZOrder = 0x0004;
+    private const uint SwpNoActivate = 0x0010;
+    private const double GuidanceCursorGap = 44;
 
     private readonly IServiceProvider _serviceProvider;
     private readonly MainWindowViewModel _viewModel;
     private readonly ILogger<MainWindow> _logger;
     private readonly DispatcherTimer _placementSaveTimer;
+    private readonly DispatcherTimer _guidanceFollowTimer;
     private GuidanceWindow? _guidanceWindow;
     private bool _isInitialized;
     private bool _isClosing;
@@ -46,6 +52,12 @@ public partial class MainWindow : Window
             Interval = TimeSpan.FromMilliseconds(500)
         };
         _placementSaveTimer.Tick += OnPlacementSaveTimerTick;
+
+        _guidanceFollowTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(50)
+        };
+        _guidanceFollowTimer.Tick += OnGuidanceFollowTimerTick;
 
         _viewModel.SettingsRequested += OnSettingsRequested;
         _viewModel.CloseRequested += OnCloseRequested;
@@ -95,6 +107,7 @@ public partial class MainWindow : Window
 
         _isClosing = true;
         _placementSaveTimer.Stop();
+        _guidanceFollowTimer.Stop();
         _viewModel.SettingsRequested -= OnSettingsRequested;
         _viewModel.CloseRequested -= OnCloseRequested;
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
@@ -183,40 +196,58 @@ public partial class MainWindow : Window
                 _viewModel.IsGuidanceVisible = false;
             };
             _guidanceWindow.Show();
-            PositionGuidanceWindow();
+            PositionGuidanceWindowNearCursor();
+            _guidanceFollowTimer.Start();
             return;
         }
 
+        _guidanceFollowTimer.Stop();
         _guidanceWindow?.Close();
         _guidanceWindow = null;
     }
 
-    private void PositionGuidanceWindow()
+    private void OnGuidanceFollowTimerTick(object? sender, EventArgs e)
     {
-        if (_guidanceWindow is null)
+        PositionGuidanceWindowNearCursor();
+    }
+
+    private void PositionGuidanceWindowNearCursor()
+    {
+        if (_guidanceWindow is null
+            || !GetCursorPos(out var cursor)
+            || !TryGetMonitorWorkArea(cursor, out var workArea, out var scaleX, out var scaleY))
         {
             return;
         }
 
-        var right = Left + Width + 12;
-        if (right + _guidanceWindow.Width <= SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth)
+        var windowHandle = new WindowInteropHelper(_guidanceWindow).Handle;
+        if (windowHandle == nint.Zero)
         {
-            _guidanceWindow.Left = right;
-        }
-        else
-        {
-            _guidanceWindow.Left = Math.Max(
-                SystemParameters.VirtualScreenLeft,
-                Left - _guidanceWindow.Width - 12);
+            return;
         }
 
-        _guidanceWindow.Top = Math.Max(
-            SystemParameters.VirtualScreenTop,
-            Math.Min(
-                Top,
-                SystemParameters.VirtualScreenTop
-                + SystemParameters.VirtualScreenHeight
-                - _guidanceWindow.Height));
+        var width = (int)Math.Round(_guidanceWindow.ActualWidth * scaleX);
+        var height = (int)Math.Round(_guidanceWindow.ActualHeight * scaleY);
+        var gap = (int)Math.Round(GuidanceCursorGap * scaleX);
+
+        var x = cursor.X + gap;
+        if (x + width > workArea.Right)
+        {
+            x = cursor.X - width - gap;
+        }
+
+        var y = cursor.Y - height / 2;
+        x = ClampToRange(x, workArea.Left, workArea.Right - width);
+        y = ClampToRange(y, workArea.Top, workArea.Bottom - height);
+
+        SetWindowPos(
+            windowHandle,
+            nint.Zero,
+            x,
+            y,
+            0,
+            0,
+            SwpNoSize | SwpNoZOrder | SwpNoActivate);
     }
 
     private async void OnPlacementSaveTimerTick(object? sender, EventArgs e)
@@ -290,6 +321,102 @@ public partial class MainWindow : Window
 
         return nint.Zero;
     }
+
+    private static bool TryGetMonitorWorkArea(
+        NativePoint point,
+        out NativeRect workArea,
+        out double scaleX,
+        out double scaleY)
+    {
+        workArea = default;
+        scaleX = 1;
+        scaleY = 1;
+
+        var monitor = MonitorFromPoint(point, MonitorDefaultToNearest);
+        if (monitor == nint.Zero)
+        {
+            return false;
+        }
+
+        var monitorInfo = new MonitorInfo
+        {
+            Size = Marshal.SizeOf<MonitorInfo>()
+        };
+        if (!GetMonitorInfo(monitor, ref monitorInfo))
+        {
+            return false;
+        }
+
+        workArea = monitorInfo.WorkArea;
+        if (GetDpiForMonitor(monitor, 0, out var dpiX, out var dpiY) == 0)
+        {
+            scaleX = dpiX / 96d;
+            scaleY = dpiY / 96d;
+        }
+
+        return true;
+    }
+
+    private static int ClampToRange(int value, int minimum, int maximum)
+    {
+        return maximum < minimum
+            ? minimum
+            : Math.Clamp(value, minimum, maximum);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorInfo
+    {
+        public int Size;
+        public NativeRect Monitor;
+        public NativeRect WorkArea;
+        public uint Flags;
+    }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetCursorPos(out NativePoint point);
+
+    [DllImport("user32.dll")]
+    private static extern nint MonitorFromPoint(NativePoint point, uint flags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfo(nint monitor, ref MonitorInfo monitorInfo);
+
+    [DllImport("shcore.dll")]
+    private static extern int GetDpiForMonitor(
+        nint monitor,
+        int dpiType,
+        out uint dpiX,
+        out uint dpiY);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowPos(
+        nint windowHandle,
+        nint insertAfter,
+        int x,
+        int y,
+        int width,
+        int height,
+        uint flags);
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
     private static extern nint GetWindowLongPtr(nint windowHandle, int index);

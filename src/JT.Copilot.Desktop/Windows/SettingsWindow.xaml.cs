@@ -3,7 +3,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
-using JT.Copilot.Application.Abstractions;
 using JT.Copilot.Application.Hotkeys;
 using JT.Copilot.Desktop.ViewModels;
 
@@ -12,34 +11,15 @@ namespace JT.Copilot.Desktop.Windows;
 public partial class SettingsWindow : Window
 {
     private readonly MainWindowViewModel _viewModel;
-    private readonly IZhipuApiKeyStore _apiKeyStore;
     private readonly HashSet<int> _capturedKeys = [];
     private bool _isCapturingHotkey;
     private HotkeyModifiers _capturedModifiers;
 
-    public SettingsWindow(
-        MainWindowViewModel viewModel,
-        IZhipuApiKeyStore apiKeyStore)
+    public SettingsWindow(MainWindowViewModel viewModel)
     {
         _viewModel = viewModel;
-        _apiKeyStore = apiKeyStore;
         DataContext = viewModel;
         InitializeComponent();
-    }
-
-    private async void SettingsWindow_OnLoaded(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            var apiKey = await _apiKeyStore.GetApiKeyAsync();
-            ApiKeyStatusText.Text = string.IsNullOrWhiteSpace(apiKey)
-                ? "尚未配置"
-                : "已安全配置";
-        }
-        catch (Exception exception)
-        {
-            ApiKeyStatusText.Text = $"无法读取配置：{exception.Message}";
-        }
     }
 
     private void SettingsWindow_OnSourceInitialized(object? sender, EventArgs e)
@@ -60,26 +40,6 @@ public partial class SettingsWindow : Window
     private void CloseButton_OnClick(object sender, RoutedEventArgs e)
     {
         Close();
-    }
-
-    private async void SaveApiKeyButton_OnClick(object sender, RoutedEventArgs e)
-    {
-        if (string.IsNullOrWhiteSpace(ZhipuApiKeyBox.Password))
-        {
-            ApiKeyStatusText.Text = "请输入智谱 API Key。";
-            return;
-        }
-
-        try
-        {
-            await _apiKeyStore.SaveApiKeyAsync(ZhipuApiKeyBox.Password);
-            ZhipuApiKeyBox.Clear();
-            ApiKeyStatusText.Text = "已安全配置";
-        }
-        catch (Exception exception)
-        {
-            ApiKeyStatusText.Text = $"保存失败：{exception.Message}";
-        }
     }
 
     private void ModifyHotkeyButton_OnClick(object sender, RoutedEventArgs e)
